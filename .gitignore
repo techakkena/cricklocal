@@ -1,0 +1,40 @@
+# ==========================================
+# CricketLocal - Git Ignore
+# ==========================================
+
+# ---------- Java / Maven ----------
+cricklocal-backend/target/
+*.class
+
+# ---------- Node / React ----------
+cricklocal-frontend/node_modules/
+cricklocal-frontend/dist/
+cricklocal-frontend/build/
+
+# ---------- Environment / Secrets ----------
+.env
+.env.*
+!.env.example
+
+application-local.properties
+application-prod.properties
+
+# ---------- IDE ----------
+.vscode/
+.idea/
+*.iml
+
+# ---------- Logs ----------
+*.log
+logs/
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+
+# ---------- Temporary files ----------
+*.tmp
+*.temp
+
+# ---------- Test / generated files ----------
+coverage/
