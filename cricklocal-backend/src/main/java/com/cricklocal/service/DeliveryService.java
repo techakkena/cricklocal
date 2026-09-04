@@ -89,6 +89,13 @@ public class DeliveryService {
                                 new ResourceNotFoundException(
                                         "Batter not found"));
 
+                Player nonStriker = playerRepository.findById(
+                                request.getNonStrikerId())
+                                .orElseThrow(() ->
+                                        new ResourceNotFoundException(
+                                                "Non-striker not found"));
+
+
                 // 4. Find bowler
                 Player bowler = playerRepository.findById(
                                 request.getBowlerId())
@@ -211,6 +218,7 @@ public class DeliveryService {
 
                 delivery.setInnings(innings);
                 delivery.setBatter(batter);
+                delivery.setNonStriker(nonStriker);
                 delivery.setBowler(bowler);
 
                 delivery.setDeliveryNumber(deliveryNumber);
@@ -814,6 +822,12 @@ public class DeliveryService {
 
         response.setBatterName(
                 delivery.getBatter().getDisplayName());
+
+        if (delivery.getNonStriker() != null) {
+                response.setNonStrikerId(delivery.getNonStriker().getId());
+                response.setNonStrikerName(
+                        delivery.getNonStriker().getDisplayName());
+        }
 
         response.setBowlerId(
                 delivery.getBowler().getId());

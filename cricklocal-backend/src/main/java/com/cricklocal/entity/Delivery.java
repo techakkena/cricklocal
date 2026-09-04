@@ -33,6 +33,10 @@ public class Delivery {
     private Player batter;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "non_striker_id")
+    private Player nonStriker;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "bowler_id", nullable = false)
     private Player bowler;
 
@@ -110,6 +114,14 @@ public class Delivery {
 
     public void setBatter(Player batter) {
         this.batter = batter;
+    }
+
+    public Player getNonStriker() {
+        return nonStriker;
+    }
+
+    public void setNonStriker(Player nonStriker) {
+        this.nonStriker = nonStriker;
     }
 
     public Player getBowler() {

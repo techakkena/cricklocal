@@ -11,6 +11,8 @@ public class RecordDeliveryRequest {
     @NotNull(message = "Batter is required")
     private Long batterId;
 
+    private Long nonStrikerId;
+
     @NotNull(message = "Bowler is required")
     private Long bowlerId;
 
@@ -45,6 +47,14 @@ public class RecordDeliveryRequest {
 
     public void setBatterId(Long batterId) {
         this.batterId = batterId;
+    }
+
+    public Long getNonStrikerId() {
+        return nonStrikerId;
+    }
+
+    public void setNonStrikerId(Long nonStrikerId) {
+        this.nonStrikerId = nonStrikerId;
     }
 
     public Long getBowlerId() {

@@ -21,6 +21,9 @@ public class DeliveryResponse {
     private Long batterId;
     private String batterName;
 
+    private Long nonStrikerId;
+    private String nonStrikerName;
+
     private Long bowlerId;
     private String bowlerName;
 
@@ -110,6 +113,22 @@ public class DeliveryResponse {
 
     public void setBatterName(String batterName) {
         this.batterName = batterName;
+    }
+
+    public Long getNonStrikerId() {
+        return nonStrikerId;
+    }
+
+    public void setNonStrikerId(Long nonStrikerId) {
+        this.nonStrikerId = nonStrikerId;
+    }
+
+    public String getNonStrikerName() {
+        return nonStrikerName;
+    }
+
+    public void setNonStrikerName(String nonStrikerName) {
+        this.nonStrikerName = nonStrikerName;
     }
 
     public Long getBowlerId() {
