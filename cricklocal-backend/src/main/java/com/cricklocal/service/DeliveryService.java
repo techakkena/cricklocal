@@ -119,7 +119,22 @@ public class DeliveryService {
                                 "Batter is not the current striker");
                 }
 
-                // 7. Bowler must be the current bowler
+                // 7. Batter and non-striker must be different
+                if (batter.getId().equals(nonStriker.getId())) {
+                        throw new IllegalArgumentException(
+                                "Batter and non-striker must be different players");
+                }
+
+                // 8. Non-striker must be the current non-striker
+                if (state.getNonStriker() == null
+                        || !state.getNonStriker().getId()
+                        .equals(nonStriker.getId())) {
+
+                        throw new IllegalArgumentException(
+                                "Non-striker is not the current non-striker");
+                }
+
+                // 9. Bowler must be the current bowler
                 if (state.getCurrentBowler() == null
                         || !state.getCurrentBowler().getId()
                         .equals(bowler.getId())) {
@@ -128,13 +143,13 @@ public class DeliveryService {
                                 "Bowler is not the current bowler");
                 }
 
-                // 8. Batter and bowler must be different
+                // 10. Batter and bowler must be different
                 if (batter.getId().equals(bowler.getId())) {
                         throw new IllegalArgumentException(
                                 "Batter and bowler must be different players");
                 }
 
-                // 9. Verify batter is in the match lineup
+                // 11. Verify batter is in the match lineup
                 MatchLineup batterLineup =
                         matchLineupRepository
                                 .findByMatchAndPlayer(
@@ -143,8 +158,33 @@ public class DeliveryService {
                                 .orElseThrow(() ->
                                         new IllegalArgumentException(
                                                 "Batter is not in the match lineup"));
+                
+                // 12. Verify non-striker is in the match lineup
+                MatchLineup nonStrikerLineup =
+                                matchLineupRepository
+                                        .findByMatchAndPlayer(
+                                                innings.getMatch(),
+                                                nonStriker)
+                                        .orElseThrow(() ->
+                                                new IllegalArgumentException(
+                                                        "Non-striker is not in the match lineup"));
 
-                // 10. Verify bowler is in the match lineup
+                        // Non-striker must belong to batting team
+                        if (!nonStrikerLineup.getTeam().getId()
+                                .equals(innings.getBattingTeam().getId())) {
+
+                        throw new IllegalArgumentException(
+                                "Non-striker does not belong to the batting team");
+                }
+
+                // Non-striker must be playing
+                if (!nonStrikerLineup.getPlaying()) {
+                throw new IllegalArgumentException(
+                        "Non-striker is not in the playing XI");
+                }                                
+
+
+                // 13. Verify bowler is in the match lineup
                 MatchLineup bowlerLineup =
                         matchLineupRepository
                                 .findByMatchAndPlayer(
@@ -154,7 +194,7 @@ public class DeliveryService {
                                         new IllegalArgumentException(
                                                 "Bowler is not in the match lineup"));
 
-                // 11. Batter must belong to batting team
+                // 14. Batter must belong to batting team
                 if (!batterLineup.getTeam().getId()
                         .equals(innings.getBattingTeam().getId())) {
 
@@ -162,7 +202,7 @@ public class DeliveryService {
                                 "Batter does not belong to the batting team");
                 }
 
-                // 12. Bowler must belong to bowling team
+                // 15. Bowler must belong to bowling team
                 if (!bowlerLineup.getTeam().getId()
                         .equals(innings.getBowlingTeam().getId())) {
 
@@ -170,25 +210,25 @@ public class DeliveryService {
                                 "Bowler does not belong to the bowling team");
                 }
 
-                // 13. Batter must be playing
+                // 16. Batter must be playing
                 if (!batterLineup.getPlaying()) {
                         throw new IllegalArgumentException(
                                 "Batter is not in the playing XI");
                 }
 
-                // 14. Bowler must be playing
+                // 17. Bowler must be playing
                 if (!bowlerLineup.getPlaying()) {
                         throw new IllegalArgumentException(
                                 "Bowler is not in the playing XI");
                 }
 
-                // 15. Validate extra runs
+                // 18. Validate extra runs
                 validateExtras(request);
 
-                // 16. Validate wicket information
+                // 18. Validate wicket information
                 validateWicket(request, innings);
 
-                // 17. Calculate delivery values
+                // 19. Calculate delivery values
                 boolean legalDelivery =
                         request.getExtraType() != ExtraType.WIDE
                                 && request.getExtraType() != ExtraType.NO_BALL;
@@ -200,7 +240,7 @@ public class DeliveryService {
                 DeliveryResult result =
                         determineDeliveryResult(request);
 
-                // 18. Calculate delivery position
+                // 20. Calculate delivery position
                 int deliveryNumber =
                         (int) deliveryRepository.countByInnings(innings) + 1;
 
@@ -213,7 +253,7 @@ public class DeliveryService {
                 int ballInOver =
                         (legalBallsBefore % 6) + 1;
 
-                // 19. Create delivery
+                // 21. Create delivery
                 Delivery delivery = new Delivery();
 
                 delivery.setInnings(innings);
