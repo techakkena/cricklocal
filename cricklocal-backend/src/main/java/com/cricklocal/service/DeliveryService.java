@@ -2,10 +2,14 @@ package com.cricklocal.service;
 
 import com.cricklocal.dto.DeliveryResponse;
 import com.cricklocal.dto.RecordDeliveryRequest;
+import com.cricklocal.entity.BattingInnings;
+import com.cricklocal.entity.BowlingInnings;
 import com.cricklocal.entity.Delivery;
+import com.cricklocal.entity.FieldingEvent;
 import com.cricklocal.entity.Innings;
 import com.cricklocal.entity.InningsState;
 import com.cricklocal.entity.MatchLineup;
+import com.cricklocal.entity.Partnership;
 import com.cricklocal.entity.Player;
 import com.cricklocal.enums.DeliveryResult;
 import com.cricklocal.enums.DismissalEnd;
@@ -20,9 +24,8 @@ import com.cricklocal.repository.MatchLineupRepository;
 import com.cricklocal.repository.PlayerRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.cricklocal.repository.InningsStateRepository;
-import com.cricklocal.enums.DismissalEnd;
-import com.cricklocal.enums.WicketType;
+import com.cricklocal.repository.FieldingEventRepository;
+
 
 @Service
 public class DeliveryService {
@@ -32,19 +35,34 @@ public class DeliveryService {
     private final PlayerRepository playerRepository;
     private final MatchLineupRepository matchLineupRepository;
     private final InningsStateRepository inningsStateRepository;
+    private final BattingInningsService battingInningsService;
+    private final BowlingInningsService bowlingInningsService;
+    private final FieldingEventRepository fieldingEventRepository;
+    private final PartnershipService partnershipService;
+    private final FallOfWicketService fallOfWicketService;
 
     public DeliveryService(
-            DeliveryRepository deliveryRepository,
-            InningsRepository inningsRepository,
-            PlayerRepository playerRepository,
-            MatchLineupRepository matchLineupRepository,
-            InningsStateRepository inningsStateRepository) {
+                DeliveryRepository deliveryRepository,
+                InningsRepository inningsRepository,
+                PlayerRepository playerRepository,
+                MatchLineupRepository matchLineupRepository,
+                InningsStateRepository inningsStateRepository,
+                BattingInningsService battingInningsService,
+                BowlingInningsService bowlingInningsService,
+                FieldingEventRepository fieldingEventRepository,
+                PartnershipService partnershipService,
+                FallOfWicketService fallOfWicketService) {
 
-        this.deliveryRepository = deliveryRepository;
-        this.inningsRepository = inningsRepository;
-        this.playerRepository = playerRepository;
-        this.matchLineupRepository = matchLineupRepository;
-        this.inningsStateRepository = inningsStateRepository;
+                this.deliveryRepository = deliveryRepository;
+                this.inningsRepository = inningsRepository;
+                this.playerRepository = playerRepository;
+                this.matchLineupRepository = matchLineupRepository;
+                this.inningsStateRepository = inningsStateRepository;
+                this.battingInningsService = battingInningsService;
+                this.bowlingInningsService = bowlingInningsService;
+                this.fieldingEventRepository = fieldingEventRepository;
+                this.partnershipService = partnershipService;
+                this.fallOfWicketService = fallOfWicketService;
     }
 
     @Transactional
@@ -252,9 +270,13 @@ public class DeliveryService {
                         delivery.setFielder(fielder);
                 }
 
+                initializePartnershipIfNeeded(innings);
+
                 // 22. Save delivery
                 Delivery savedDelivery =
                         deliveryRepository.save(delivery);
+
+                updatePartnership(innings, savedDelivery);
 
                 // 23. Update innings score
                 innings.setTotalRuns(
@@ -275,7 +297,18 @@ public class DeliveryService {
 
                 inningsRepository.save(innings);
 
-                // 24. Find new batter
+                createFallOfWicket(innings, savedDelivery);
+
+                // 24. Update batting statistics
+                updateBattingStatistics(
+                        innings,
+                        savedDelivery);
+
+                updateBowlingStatistics(innings, savedDelivery);
+
+                createFieldingEvent(savedDelivery);
+
+                // 25. Find new batter
                 Player newBatter = null;
 
                 if (Boolean.TRUE.equals(
@@ -295,6 +328,12 @@ public class DeliveryService {
                         state,
                         savedDelivery,
                         newBatter);
+
+                if (Boolean.TRUE.equals(savedDelivery.getWicket())
+                        && newBatter != null) {
+
+                        initializePartnershipIfNeeded(innings);
+                }
 
                 // 26. Build response
                 return toDeliveryResponse(
@@ -609,6 +648,144 @@ public class DeliveryService {
         return DeliveryResult.RUNS;
     }
 
+    private void updateBattingStatistics(
+                        Innings innings,
+                        Delivery delivery) {
+
+                BattingInnings battingInnings =
+                        battingInningsService.getOrCreate(
+                                innings,
+                                delivery.getBatter());
+
+                int runs = delivery.getRunsOffBat();
+
+                battingInnings.setRuns(
+                        battingInnings.getRuns() + runs);
+
+                // A batter faces a ball only when it is a legal delivery.
+                if (delivery.getLegalDelivery()
+                        && delivery.getExtraType() == ExtraType.NONE) {
+
+                        battingInnings.setBallsFaced(
+                                battingInnings.getBallsFaced() + 1);
+                }
+
+                if (runs == 4) {
+
+                        battingInnings.setFours(
+                                battingInnings.getFours() + 1);
+                }
+
+                if (runs == 6) {
+
+                        battingInnings.setSixes(
+                                battingInnings.getSixes() + 1);
+                }
+
+                if (delivery.getLegalDelivery()
+                        && delivery.getExtraType() == ExtraType.NONE
+                        && runs == 0) {
+
+                        battingInnings.setDots(
+                                battingInnings.getDots() + 1);
+                }
+
+                if (Boolean.TRUE.equals(delivery.getWicket())
+                        && delivery.getDismissedPlayer() != null
+                        && delivery.getDismissedPlayer().getId()
+                                .equals(delivery.getBatter().getId())) {
+
+                        battingInnings.setDismissed(true);
+
+                        if (delivery.getWicketType() != null) {
+
+                        battingInnings.setDismissalType(
+                                delivery.getWicketType().name());
+                        }
+
+                        battingInnings.setDismissedByPlayer(
+                                delivery.getFielder());
+                }
+
+                battingInningsService.save(battingInnings);
+        }
+
+    private void updateBowlingStatistics(
+                        Innings innings,
+                        Delivery delivery) {
+
+                BowlingInnings bowlingInnings =
+                        bowlingInningsService.getOrCreate(
+                                innings,
+                                delivery.getBowler());
+
+                int runsConceded = delivery.getRunsOffBat();
+
+                // Byes and leg-byes are not charged to the bowler.
+                if (delivery.getExtraType() != ExtraType.BYE
+                        && delivery.getExtraType() != ExtraType.LEG_BYE) {
+
+                        runsConceded += delivery.getExtraRuns();
+                }
+
+                bowlingInnings.setRunsConceded(
+                        bowlingInnings.getRunsConceded() + runsConceded);
+
+                // Only legal deliveries count as balls bowled.
+                if (delivery.getLegalDelivery()) {
+
+                        int ballsBowled =
+                                bowlingInnings.getBallsBowled() + 1;
+
+                        bowlingInnings.setBallsBowled(ballsBowled);
+
+                        bowlingInnings.setOvers(ballsBowled / 6);
+                }
+
+                if (delivery.getRunsOffBat() == 4) {
+
+                        bowlingInnings.setFoursConceded(
+                                bowlingInnings.getFoursConceded() + 1);
+                }
+
+                if (delivery.getRunsOffBat() == 6) {
+
+                        bowlingInnings.setSixesConceded(
+                                bowlingInnings.getSixesConceded() + 1);
+                }
+
+                if (delivery.getExtraType() == ExtraType.WIDE) {
+
+                        bowlingInnings.setWides(
+                                bowlingInnings.getWides() + delivery.getExtraRuns());
+                }
+
+                if (delivery.getExtraType() == ExtraType.NO_BALL) {
+
+                        bowlingInnings.setNoBalls(
+                                bowlingInnings.getNoBalls() + 1);
+                }
+
+                if (Boolean.TRUE.equals(delivery.getWicket())) {
+
+                        WicketType wicketType =
+                                delivery.getWicketType();
+
+                        // These dismissals are credited to the bowler.
+                        if (wicketType == WicketType.BOWLED
+                                || wicketType == WicketType.CAUGHT
+                                || wicketType == WicketType.LBW
+                                || wicketType == WicketType.STUMPED
+                                || wicketType == WicketType.HIT_WICKET) {
+
+                        bowlingInnings.setWickets(
+                                bowlingInnings.getWickets() + 1);
+                        }
+                }
+
+                bowlingInningsService.save(bowlingInnings);
+    }
+
     private DeliveryResponse toDeliveryResponse(
             Delivery delivery,
             Innings innings) {
@@ -773,6 +950,113 @@ public class DeliveryService {
         }
 
         inningsStateRepository.save(state);
+    }
+
+    private void createFieldingEvent(Delivery delivery) {
+
+                if (!Boolean.TRUE.equals(delivery.getWicket())) {
+                        return;
+                }
+
+                WicketType wicketType = delivery.getWicketType();
+
+                if (wicketType != WicketType.CAUGHT
+                        && wicketType != WicketType.STUMPED
+                        && wicketType != WicketType.RUN_OUT) {
+                        return;
+                }
+
+                if (delivery.getFielder() == null
+                        || delivery.getDismissedPlayer() == null) {
+                        return;
+                }
+
+                FieldingEvent fieldingEvent = new FieldingEvent();
+
+                fieldingEvent.setInnings(delivery.getInnings());
+                fieldingEvent.setDelivery(delivery);
+                fieldingEvent.setFielder(delivery.getFielder());
+                fieldingEvent.setDismissedPlayer(
+                        delivery.getDismissedPlayer());
+                fieldingEvent.setWicketType(wicketType);
+
+                fieldingEventRepository.save(fieldingEvent);
+   }
+
+    private void updatePartnership(
+                Innings innings,
+                Delivery delivery) {
+
+                Partnership partnership =
+                        partnershipService.getActivePartnership(innings);
+
+                if (partnership == null) {
+                        return;
+                }
+
+                partnership.setRuns(
+                        partnership.getRuns()
+                                + delivery.getTotalRuns());
+
+                if (delivery.getLegalDelivery()) {
+                        partnership.setBalls(
+                                partnership.getBalls() + 1);
+                }
+
+                if (Boolean.TRUE.equals(delivery.getWicket())) {
+                        partnership.setActive(false);
+                }
+
+                partnershipService.save(partnership);
+    }
+
+    private void initializePartnershipIfNeeded(
+                Innings innings) {
+
+        Partnership activePartnership =
+                partnershipService.getActivePartnership(innings);
+
+        if (activePartnership != null) {
+                return;
+        }
+
+        InningsState state =
+                inningsStateRepository
+                        .findByInnings(innings)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Innings state not found"));
+
+        int partnershipNumber =
+                partnershipService
+                        .getNextPartnershipNumber(innings);
+
+        partnershipService.createPartnership(
+                innings,
+                state.getStriker(),
+                state.getNonStriker(),
+                partnershipNumber);
+    }
+
+    private void createFallOfWicket(
+                Innings innings,
+                Delivery delivery) {
+
+                if (!Boolean.TRUE.equals(delivery.getWicket())) {
+                        return;
+                }
+
+                if (delivery.getDismissedPlayer() == null) {
+                        return;
+                }
+
+                Integer wicketNumber = innings.getWickets();
+
+                fallOfWicketService.createFallOfWicket(
+                        innings,
+                        delivery,
+                        delivery.getDismissedPlayer(),
+                        wicketNumber);
     }
 
 }
