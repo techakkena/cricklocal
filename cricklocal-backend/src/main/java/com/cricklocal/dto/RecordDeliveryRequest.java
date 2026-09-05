@@ -11,6 +11,7 @@ public class RecordDeliveryRequest {
     @NotNull(message = "Batter is required")
     private Long batterId;
 
+    @NotNull(message = "Non-striker is required")
     private Long nonStrikerId;
 
     @NotNull(message = "Bowler is required")
