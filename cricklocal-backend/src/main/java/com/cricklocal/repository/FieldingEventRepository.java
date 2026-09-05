@@ -1,5 +1,6 @@
 package com.cricklocal.repository;
 
+import com.cricklocal.entity.Delivery;
 import com.cricklocal.entity.FieldingEvent;
 import com.cricklocal.entity.Innings;
 import com.cricklocal.entity.Player;
@@ -16,6 +17,8 @@ public interface FieldingEventRepository
 
     List<FieldingEvent> findByFielderOrderByIdAsc(
             Player fielder);
+
+    void deleteByDelivery(Delivery delivery);
 
     long countByFielderAndWicketType(
             Player fielder,

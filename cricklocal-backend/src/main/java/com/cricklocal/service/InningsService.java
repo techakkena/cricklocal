@@ -137,7 +137,7 @@ public class InningsService {
                                     new IllegalArgumentException(
                                             "Innings 1 must be started before innings 2"));
 
-            if (firstInnings.getBowlingTeam().getId()
+            if (!firstInnings.getBowlingTeam().getId()
                     .equals(battingTeam.getId())) {
 
                 throw new IllegalArgumentException(
@@ -165,7 +165,6 @@ public class InningsService {
         return toResponse(savedInnings);
     }
 
-
     @Transactional
     public InningsResponse declareInnings(
                         Long inningsId) {
@@ -187,6 +186,29 @@ public class InningsService {
                         inningsRepository.save(innings);
 
         return toResponse(savedInnings);
+    }
+
+    @Transactional
+    public InningsResponse abandonInnings(
+                        Long inningsId) {
+
+                Innings innings = inningsRepository.findById(inningsId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Innings not found"));
+
+                if (innings.getStatus() != InningsStatus.LIVE) {
+                        throw new IllegalArgumentException(
+                                "Only a live innings can be abandoned");
+                }
+
+                innings.setStatus(InningsStatus.ABANDONED);
+                innings.setCompletedAt(Instant.now());
+
+                Innings savedInnings =
+                        inningsRepository.save(innings);
+
+                return toResponse(savedInnings);
     }
 
 

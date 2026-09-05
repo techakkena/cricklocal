@@ -51,4 +51,11 @@ public class InningsController {
 
         return inningsService.declareInnings(inningsId);
     }
+
+    @PostMapping("/innings/{inningsId}/abandon")
+    public InningsResponse abandonInnings(
+            @PathVariable Long inningsId) {
+
+        return inningsService.abandonInnings(inningsId);
+    }
 }

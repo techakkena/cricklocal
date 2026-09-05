@@ -37,4 +37,11 @@ public class DeliveryController {
 
         return deliveryService.getDeliveries(inningsId);
     }
+
+    @PostMapping("/{inningsId}/deliveries/undo")
+    public void undoLastDelivery(
+            @PathVariable Long inningsId) {
+
+        deliveryService.undoLastDelivery(inningsId);
+    }
 }

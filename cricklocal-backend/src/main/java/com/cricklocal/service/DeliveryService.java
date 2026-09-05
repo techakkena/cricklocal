@@ -22,10 +22,17 @@ import com.cricklocal.repository.InningsRepository;
 import com.cricklocal.repository.InningsStateRepository;
 import com.cricklocal.repository.MatchLineupRepository;
 import com.cricklocal.repository.PlayerRepository;
+import com.cricklocal.repository.MatchRepository;
+import com.cricklocal.repository.MatchResultRepository;
+import com.cricklocal.repository.FieldingEventRepository;
+import com.cricklocal.repository.FallOfWicketRepository;
+import com.cricklocal.entity.Match;
+import com.cricklocal.enums.MatchStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import com.cricklocal.repository.FieldingEventRepository;
 import java.time.Instant;
+import com.cricklocal.dto.RecordMatchResultRequest;
+import com.cricklocal.enums.MatchResultType;
 
 
 @Service
@@ -41,6 +48,11 @@ public class DeliveryService {
     private final FieldingEventRepository fieldingEventRepository;
     private final PartnershipService partnershipService;
     private final FallOfWicketService fallOfWicketService;
+    private final MatchResultService matchResultService;
+    private final FallOfWicketRepository fallOfWicketRepository;
+    private final MatchResultRepository matchResultRepository;
+    private final MatchRepository matchRepository;
+
 
     public DeliveryService(
                 DeliveryRepository deliveryRepository,
@@ -52,18 +64,26 @@ public class DeliveryService {
                 BowlingInningsService bowlingInningsService,
                 FieldingEventRepository fieldingEventRepository,
                 PartnershipService partnershipService,
-                FallOfWicketService fallOfWicketService) {
+                FallOfWicketService fallOfWicketService,
+                MatchResultService matchResultService,
+                FallOfWicketRepository fallOfWicketRepository,
+                MatchResultRepository matchResultRepository,
+                MatchRepository matchRepository) {
 
-                this.deliveryRepository = deliveryRepository;
-                this.inningsRepository = inningsRepository;
-                this.playerRepository = playerRepository;
-                this.matchLineupRepository = matchLineupRepository;
-                this.inningsStateRepository = inningsStateRepository;
-                this.battingInningsService = battingInningsService;
-                this.bowlingInningsService = bowlingInningsService;
-                this.fieldingEventRepository = fieldingEventRepository;
-                this.partnershipService = partnershipService;
-                this.fallOfWicketService = fallOfWicketService;
+        this.deliveryRepository = deliveryRepository;
+        this.inningsRepository = inningsRepository;
+        this.playerRepository = playerRepository;
+        this.matchLineupRepository = matchLineupRepository;
+        this.inningsStateRepository = inningsStateRepository;
+        this.battingInningsService = battingInningsService;
+        this.bowlingInningsService = bowlingInningsService;
+        this.fieldingEventRepository = fieldingEventRepository;
+        this.partnershipService = partnershipService;
+        this.fallOfWicketService = fallOfWicketService;
+        this.matchResultService = matchResultService;
+        this.fallOfWicketRepository = fallOfWicketRepository;
+        this.matchResultRepository = matchResultRepository;
+        this.matchRepository = matchRepository;
     }
 
     @Transactional
@@ -372,7 +392,31 @@ public class DeliveryService {
                         }
                 }
 
+                // Check target completion for innings 2
+                if (innings.getInningsNumber() == 2) {
+
+                        Innings firstInnings =
+                                inningsRepository
+                                        .findByMatchAndInningsNumber(
+                                                innings.getMatch(),
+                                                1)
+                                        .orElseThrow(() ->
+                                                new IllegalArgumentException(
+                                                        "Innings 1 not found for innings 2"));
+
+                        int target =
+                                firstInnings.getTotalRuns() + 1;
+
+                        if (innings.getTotalRuns() >= target) {
+
+                                innings.setStatus(InningsStatus.COMPLETED);
+                                innings.setCompletedAt(Instant.now());
+                        }
+                }
+
                 inningsRepository.save(innings);
+
+                completeMatchIfNeeded(innings);
 
                 createFallOfWicket(innings, savedDelivery);
 
@@ -435,7 +479,293 @@ public class DeliveryService {
                 .toList();
    }
 
-    private void validateExtras(
+   @Transactional
+   public void undoLastDelivery(Long inningsId) {
+
+                Innings innings =
+                        inningsRepository.findById(inningsId)
+                                .orElseThrow(() ->
+                                        new ResourceNotFoundException(
+                                                "Innings not found"));
+
+                Delivery lastDelivery =
+                        deliveryRepository
+                                .findTopByInningsOrderByDeliveryNumberDesc(innings)
+                                .orElseThrow(() ->
+                                        new IllegalArgumentException(
+                                                "No deliveries to undo"));
+
+                innings.setTotalRuns(
+                        innings.getTotalRuns()
+                                - lastDelivery.getTotalRuns());
+
+                if (lastDelivery.getLegalDelivery()) {
+                        innings.setLegalBalls(
+                                innings.getLegalBalls() - 1);
+                }
+
+                if (Boolean.TRUE.equals(lastDelivery.getWicket())) {
+                        innings.setWickets(
+                                innings.getWickets() - 1);
+                }
+
+                innings.setStatus(InningsStatus.LIVE);
+                innings.setCompletedAt(null);
+                if (innings.getInningsNumber() == 2) {
+
+                        Match match = innings.getMatch();
+
+                        matchResultRepository.findByMatch(match)
+                                .ifPresent(matchResult -> {
+                                        matchResultRepository.delete(matchResult);
+                                        match.setStatus(MatchStatus.LIVE);
+                                        matchRepository.save(match);
+                                });
+                }
+                undoBattingStatistics(innings, lastDelivery);
+                undoInningsState(innings, lastDelivery);
+                undoBowlingStatistics(innings, lastDelivery);
+                fallOfWicketRepository.deleteByDelivery(lastDelivery);
+                fieldingEventRepository.deleteByDelivery(lastDelivery);
+                deliveryRepository.delete(lastDelivery);
+                inningsRepository.save(innings);
+   }
+
+   private void undoBattingStatistics(
+                        Innings innings,
+                        Delivery delivery) {
+
+                BattingInnings battingInnings =
+                        battingInningsService.getOrCreate(
+                                innings,
+                                delivery.getBatter());
+
+                battingInnings.setRuns(
+                        Math.max(
+                                0,
+                                battingInnings.getRuns()
+                                        - delivery.getRunsOffBat()));
+
+                if (delivery.getLegalDelivery()
+                        && delivery.getExtraType() == ExtraType.NONE) {
+
+                        battingInnings.setBallsFaced(
+                                Math.max(
+                                        0,
+                                        battingInnings.getBallsFaced() - 1));
+                }
+
+                if (delivery.getRunsOffBat() == 4) {
+                        battingInnings.setFours(
+                                Math.max(
+                                        0,
+                                        battingInnings.getFours() - 1));
+                }
+
+                if (delivery.getRunsOffBat() == 6) {
+                        battingInnings.setSixes(
+                                Math.max(
+                                        0,
+                                        battingInnings.getSixes() - 1));
+                }
+
+                if (delivery.getLegalDelivery()
+                        && delivery.getExtraType() == ExtraType.NONE
+                        && delivery.getRunsOffBat() == 0) {
+
+                        battingInnings.setDots(
+                                Math.max(
+                                        0,
+                                        battingInnings.getDots() - 1));
+                }
+
+                if (delivery.getExtraType() != ExtraType.NONE
+                        && delivery.getExtraType() != ExtraType.BYE
+                        && delivery.getExtraType() != ExtraType.LEG_BYE) {
+
+                        battingInnings.setExtrasFaced(
+                                Math.max(
+                                        0,
+                                        battingInnings.getExtrasFaced()
+                                                - delivery.getExtraRuns()));
+                }
+
+                if (Boolean.TRUE.equals(delivery.getWicket())
+                        && delivery.getDismissedPlayer() != null) {
+
+                        BattingInnings dismissedBattingInnings =
+                                battingInningsService.getOrCreate(
+                                        innings,
+                                        delivery.getDismissedPlayer());
+
+                        dismissedBattingInnings.setDismissed(false);
+                        dismissedBattingInnings.setDismissalType(null);
+                        dismissedBattingInnings.setDismissedByPlayer(null);
+
+                        battingInningsService.save(
+                                dismissedBattingInnings);
+                }
+
+                battingInningsService.save(battingInnings);
+   }
+
+   private void undoBowlingStatistics(
+                        Innings innings,
+                        Delivery delivery) {
+
+                BowlingInnings bowlingInnings =
+                        bowlingInningsService.getOrCreate(
+                                innings,
+                                delivery.getBowler());
+
+                int runsConceded =
+                        delivery.getRunsOffBat();
+
+                // Byes and leg-byes are not charged to the bowler.
+                if (delivery.getExtraType() != ExtraType.BYE
+                        && delivery.getExtraType() != ExtraType.LEG_BYE) {
+
+                        runsConceded += delivery.getExtraRuns();
+                }
+
+                bowlingInnings.setRunsConceded(
+                        Math.max(
+                                0,
+                                bowlingInnings.getRunsConceded()
+                                        - runsConceded));
+
+                // Only legal deliveries count as balls bowled.
+                if (delivery.getLegalDelivery()) {
+
+                        bowlingInnings.setBallsBowled(
+                                Math.max(
+                                        0,
+                                        bowlingInnings.getBallsBowled() - 1));
+                }
+
+                if (delivery.getRunsOffBat() == 4) {
+
+                        bowlingInnings.setFoursConceded(
+                                Math.max(
+                                        0,
+                                        bowlingInnings.getFoursConceded() - 1));
+                }
+
+                if (delivery.getRunsOffBat() == 6) {
+
+                        bowlingInnings.setSixesConceded(
+                                Math.max(
+                                        0,
+                                        bowlingInnings.getSixesConceded() - 1));
+                }
+
+                if (delivery.getExtraType() == ExtraType.WIDE) {
+
+                        bowlingInnings.setWides(
+                                Math.max(
+                                        0,
+                                        bowlingInnings.getWides()
+                                                - delivery.getExtraRuns()));
+                }
+
+                if (delivery.getExtraType() == ExtraType.NO_BALL) {
+
+                        bowlingInnings.setNoBalls(
+                                Math.max(
+                                        0,
+                                        bowlingInnings.getNoBalls() - 1));
+                }
+
+                if (Boolean.TRUE.equals(delivery.getWicket())) {
+
+                        WicketType wicketType =
+                                delivery.getWicketType();
+
+                        if (wicketType == WicketType.BOWLED
+                                || wicketType == WicketType.CAUGHT
+                                || wicketType == WicketType.LBW
+                                || wicketType == WicketType.STUMPED
+                                || wicketType == WicketType.HIT_WICKET) {
+
+                        bowlingInnings.setWickets(
+                                Math.max(
+                                        0,
+                                        bowlingInnings.getWickets() - 1));
+                        }
+                }
+
+                bowlingInningsService.save(bowlingInnings);
+   }
+
+   private void undoInningsState(
+                        Innings innings,
+                        Delivery delivery) {
+
+                InningsState state =
+                        inningsStateRepository
+                                .findByInnings(innings)
+                                .orElseThrow(() ->
+                                        new ResourceNotFoundException(
+                                                "Innings state not found"));
+
+                // Reverse the end-of-over transition first.
+                if (delivery.getLegalDelivery()
+                        && state.getLegalBallsInOver() == 0
+                        && state.getCurrentOver() > 1) {
+
+                        state.setCurrentOver(
+                                state.getCurrentOver() - 1);
+
+                        state.setLegalBallsInOver(5);
+
+                        Player striker = state.getStriker();
+
+                        state.setStriker(
+                                state.getNonStriker());
+
+                        state.setNonStriker(striker);
+                } else if (delivery.getLegalDelivery()) {
+
+                        state.setLegalBallsInOver(
+                                Math.max(
+                                        0,
+                                        state.getLegalBallsInOver() - 1));
+                }
+
+                // Reverse the odd-runs batter exchange.
+                if (delivery.getRunsOffBat() % 2 != 0) {
+
+                        Player striker = state.getStriker();
+
+                        state.setStriker(
+                                state.getNonStriker());
+
+                        state.setNonStriker(striker);
+                }
+
+                // Reverse wicket replacement.
+                if (Boolean.TRUE.equals(delivery.getWicket())
+                        && delivery.getDismissedPlayer() != null) {
+
+                        DismissalEnd dismissalEnd =
+                                delivery.getDismissalEnd();
+
+                        if (dismissalEnd == DismissalEnd.STRIKER) {
+
+                        state.setStriker(
+                                delivery.getDismissedPlayer());
+
+                        } else if (dismissalEnd == DismissalEnd.NON_STRIKER) {
+
+                        state.setNonStriker(
+                                delivery.getDismissedPlayer());
+                        }
+                }
+
+                inningsStateRepository.save(state);
+   }
+
+   private void validateExtras(
             RecordDeliveryRequest request) {
 
         ExtraType extraType = request.getExtraType();
@@ -1156,6 +1486,103 @@ public class DeliveryService {
                         delivery,
                         delivery.getDismissedPlayer(),
                         wicketNumber);
+    }
+
+    private void completeMatchIfNeeded(Innings innings) {
+
+                if (innings.getInningsNumber() != 2) {
+                        return;
+                }
+
+                if (innings.getStatus() != InningsStatus.COMPLETED) {
+                        return;
+                }
+
+                Innings firstInnings =
+                        inningsRepository
+                                .findByMatchAndInningsNumber(
+                                        innings.getMatch(),
+                                        1)
+                                .orElseThrow(() ->
+                                        new IllegalArgumentException(
+                                                "Innings 1 not found for innings 2"));
+
+                int firstInningsRuns =
+                        firstInnings.getTotalRuns();
+
+                int secondInningsRuns =
+                        innings.getTotalRuns();
+
+                RecordMatchResultRequest request =
+                        new RecordMatchResultRequest();
+
+                if (secondInningsRuns > firstInningsRuns) {
+
+                        int playingPlayers = (int) matchLineupRepository
+                                .findByMatchAndTeam(
+                                        innings.getMatch(),
+                                        innings.getBattingTeam())
+                                .stream()
+                                .filter(lineup ->
+                                        Boolean.TRUE.equals(lineup.getPlaying()))
+                                .count();
+
+                        int wicketsInHand =
+                                (playingPlayers - 1) - innings.getWickets();
+
+                        request.setResultType(
+                                MatchResultType.WON_BY_WICKETS);
+
+                        request.setWinningTeamId(
+                                innings.getBattingTeam().getId());
+
+                        request.setLosingTeamId(
+                                firstInnings.getBattingTeam().getId());
+
+                        request.setMarginWickets(
+                                wicketsInHand);
+
+                        request.setResultText(
+                                innings.getBattingTeam().getName()
+                                        + " won by "
+                                        + wicketsInHand
+                                        + " wickets");
+
+                } else if (secondInningsRuns < firstInningsRuns) {
+
+                        int marginRuns =
+                                firstInningsRuns - secondInningsRuns;
+
+                        request.setResultType(
+                                MatchResultType.WON_BY_RUNS);
+
+                        request.setWinningTeamId(
+                                firstInnings.getBattingTeam().getId());
+
+                        request.setLosingTeamId(
+                                innings.getBattingTeam().getId());
+
+                        request.setMarginRuns(
+                                marginRuns);
+
+                        request.setResultText(
+                                firstInnings.getBattingTeam().getName()
+                                        + " won by "
+                                        + marginRuns
+                                        + " runs");
+
+                } else {
+
+                          request.setResultType(
+                                MatchResultType.TIE);
+
+                                request.setResultText(
+                                "Match tied");
+                        }
+
+                matchResultService.recordResult(
+                        innings.getMatch().getId(),
+                        request);
     }
 
 }
