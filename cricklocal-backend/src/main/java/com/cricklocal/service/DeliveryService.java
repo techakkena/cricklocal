@@ -25,6 +25,7 @@ import com.cricklocal.repository.PlayerRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.cricklocal.repository.FieldingEventRepository;
+import java.time.Instant;
 
 
 @Service
@@ -247,6 +248,14 @@ public class DeliveryService {
                 int legalBallsBefore =
                         innings.getLegalBalls();
 
+                int maximumLegalBalls =
+                        innings.getMatch().getTotalOvers() * 6;
+
+                if (legalBallsBefore >= maximumLegalBalls) {
+                throw new IllegalArgumentException(
+                        "Maximum overs for this innings have been completed");
+                }
+
                 int overNumber =
                         (legalBallsBefore / 6) + 1;
 
@@ -337,10 +346,30 @@ public class DeliveryService {
                                 innings.getLegalBalls() + 1);
                 }
 
+                if (innings.getLegalBalls() >= maximumLegalBalls) {
+
+                        innings.setStatus(InningsStatus.COMPLETED);
+                        innings.setCompletedAt(Instant.now());
+                }
+
                 if (savedDelivery.getWicket()) {
 
                         innings.setWickets(
                                 innings.getWickets() + 1);
+
+                        int playingPlayers = (int) matchLineupRepository
+                                .findByMatchAndTeam(
+                                        innings.getMatch(),
+                                        innings.getBattingTeam())
+                                .stream()
+                                .filter(lineup ->
+                                        Boolean.TRUE.equals(lineup.getPlaying()))
+                                .count();
+
+                        if (innings.getWickets() >= playingPlayers - 1) {
+                                innings.setStatus(InningsStatus.COMPLETED);
+                                innings.setCompletedAt(Instant.now());
+                        }
                 }
 
                 inningsRepository.save(innings);
@@ -475,8 +504,18 @@ public class DeliveryService {
         }
 
         if (request.getNewBatterId() == null) {
-                throw new IllegalArgumentException(
-                        "New batter is required when there is a wicket");
+                int playingPlayers = (int) matchLineupRepository
+                        .findByMatchAndTeam(
+                                innings.getMatch(),
+                                innings.getBattingTeam())
+                        .stream()
+                        .filter(lineup -> Boolean.TRUE.equals(lineup.getPlaying()))
+                        .count();
+
+                if (innings.getWickets() + 1 < playingPlayers - 1) {
+                        throw new IllegalArgumentException(
+                                "New batter is required when there is a wicket");
+                }
         }
 
         // RUN_OUT can happen at either end, so the end
@@ -533,46 +572,52 @@ public class DeliveryService {
         }
 
         // --------------------------------------------------
-        // Find new batter
+        // Find and validate new batter
         // --------------------------------------------------
 
-        Player newBatter =
-                playerRepository.findById(
-                        request.getNewBatterId())
-                        .orElseThrow(() ->
-                                new ResourceNotFoundException(
-                                        "New batter not found"));
+        Player newBatter = null;
 
-        if (newBatter.getId().equals(
-                dismissedPlayer.getId())) {
+        if (request.getNewBatterId() != null) {
 
-                throw new IllegalArgumentException(
-                        "New batter cannot be the dismissed player");
-        }
+                newBatter =
+                        playerRepository.findById(
+                                request.getNewBatterId())
+                                .orElseThrow(() ->
+                                        new ResourceNotFoundException(
+                                                "New batter not found"));
 
-        // --------------------------------------------------
-        // Validate new batter lineup
-        // --------------------------------------------------
+                if (newBatter.getId().equals(
+                        dismissedPlayer.getId())) {
 
-        MatchLineup newBatterLineup =
-                matchLineupRepository
-                        .findByMatchAndPlayer(
-                                innings.getMatch(),
-                                newBatter)
-                        .orElseThrow(() ->
-                                new IllegalArgumentException(
-                                        "New batter is not in the match lineup"));
+                        throw new IllegalArgumentException(
+                                "New batter cannot be the dismissed player");
+                }
 
-        if (!newBatterLineup.getTeam().getId()
-                .equals(innings.getBattingTeam().getId())) {
+                // --------------------------------------------------
+                // Validate new batter lineup
+                // --------------------------------------------------
 
-                throw new IllegalArgumentException(
-                        "New batter does not belong to the batting team");
-        }
+                MatchLineup newBatterLineup =
+                        matchLineupRepository
+                                .findByMatchAndPlayer(
+                                        innings.getMatch(),
+                                        newBatter)
+                                .orElseThrow(() ->
+                                        new IllegalArgumentException(
+                                                "New batter is not in the match lineup"));
 
-        if (!newBatterLineup.getPlaying()) {
-                throw new IllegalArgumentException(
-                        "New batter is not in the playing XI");
+                if (!newBatterLineup.getTeam().getId()
+                        .equals(innings.getBattingTeam().getId())) {
+
+                        throw new IllegalArgumentException(
+                                "New batter does not belong to the batting team");
+                }
+
+                if (!newBatterLineup.getPlaying()) {
+
+                        throw new IllegalArgumentException(
+                                "New batter is not in the playing XI");
+                }
         }
 
         // --------------------------------------------------
@@ -618,18 +663,18 @@ public class DeliveryService {
         // New batter cannot already occupy either end
         // --------------------------------------------------
 
-        if (state.getStriker() != null
+        if (newBatter != null
+                && state.getStriker() != null
                 && state.getStriker().getId()
                 .equals(newBatter.getId())) {
-
                 throw new IllegalArgumentException(
                         "New batter is already the current striker");
         }
 
-        if (state.getNonStriker() != null
+        if (newBatter != null
+                && state.getNonStriker() != null
                 && state.getNonStriker().getId()
                 .equals(newBatter.getId())) {
-
                 throw new IllegalArgumentException(
                         "New batter is already the current non-striker");
         }
@@ -1114,4 +1159,5 @@ public class DeliveryService {
     }
 
 }
+
 
