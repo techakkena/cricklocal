@@ -165,6 +165,31 @@ public class InningsService {
         return toResponse(savedInnings);
     }
 
+
+    @Transactional
+    public InningsResponse declareInnings(
+                        Long inningsId) {
+
+                Innings innings = inningsRepository.findById(inningsId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Innings not found"));
+
+                if (innings.getStatus() != InningsStatus.LIVE) {
+                        throw new IllegalArgumentException(
+                                "Only a live innings can be declared");
+                }
+
+                innings.setStatus(InningsStatus.DECLARED);
+                innings.setCompletedAt(Instant.now());
+
+                Innings savedInnings =
+                        inningsRepository.save(innings);
+
+        return toResponse(savedInnings);
+    }
+
+
     @Transactional(readOnly = true)
     public InningsResponse getInningsById(
             Long inningsId) {

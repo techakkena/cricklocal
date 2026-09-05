@@ -44,4 +44,11 @@ public class InningsController {
 
         return inningsService.getInningsById(inningsId);
     }
+
+    @PostMapping("/innings/{inningsId}/declare")
+    public InningsResponse declareInnings(
+            @PathVariable Long inningsId) {
+
+        return inningsService.declareInnings(inningsId);
+    }
 }
