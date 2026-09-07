@@ -46,6 +46,13 @@ public class BattingInningsService {
                 .findByInningsOrderByBattingPositionAsc(innings);
     }
 
+    public List<BattingInnings> getScorecardByInnings(
+        Innings innings) {
+
+        return battingInningsRepository
+                .findScorecardBattingByInnings(innings);
+    }
+
     public BattingInningsResponse toResponse(
             BattingInnings battingInnings) {
 
@@ -92,9 +99,9 @@ public class BattingInningsService {
     }
 
     public List<BattingInningsResponse> getResponsesByInnings(
-            Innings innings) {
+                Innings innings) {
 
-        return getByInnings(innings)
+        return getScorecardByInnings(innings)
                 .stream()
                 .map(this::toResponse)
                 .toList();

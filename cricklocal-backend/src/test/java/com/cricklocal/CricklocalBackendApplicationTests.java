@@ -4,12 +4,15 @@ import com.cricklocal.dto.InningsResponse;
 import com.cricklocal.entity.InningsState;
 import com.cricklocal.dto.RecordDeliveryRequest;
 import com.cricklocal.dto.StartInningsRequest;
+import com.cricklocal.dto.ScorecardResponse;
 import com.cricklocal.entity.Innings;
 import com.cricklocal.entity.Match;
 import com.cricklocal.entity.MatchLineup;
 import com.cricklocal.entity.Player;
 import com.cricklocal.entity.Team;
 import com.cricklocal.enums.ExtraType;
+import com.cricklocal.enums.WicketType;
+import com.cricklocal.enums.DismissalEnd;
 import com.cricklocal.enums.InningsStatus;
 import com.cricklocal.enums.MatchTeamSide;
 import com.cricklocal.enums.MatchFormat;
@@ -24,6 +27,7 @@ import com.cricklocal.repository.InningsStateRepository;
 import com.cricklocal.repository.MatchResultRepository;
 import com.cricklocal.service.DeliveryService;
 import com.cricklocal.service.InningsService;
+import com.cricklocal.service.ScorecardService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -66,6 +70,9 @@ class CricklocalBackendApplicationTests {
 
     @Autowired
     private DeliveryService deliveryService;
+
+	@Autowired
+	private ScorecardService scorecardService;
 
     @Test
     void scoringEngineShouldRecordLegalScoringDelivery() {
@@ -562,6 +569,380 @@ class CricklocalBackendApplicationTests {
 												.existsByMatch(
 																rolledBackMatch));
 	}
+
+		@Test
+	void scorecardShouldAssembleInningsBattingAndBowlingData() {
+
+				String testId =
+						String.valueOf(System.currentTimeMillis());
+
+				// ---------------------------------------------------------
+				// 1. Create teams
+				// ---------------------------------------------------------
+
+				Team battingTeam = new Team();
+				battingTeam.setName(
+						"Module 8 Scorecard Batting Team " + testId);
+				battingTeam.setShortName("S8B" + testId);
+				battingTeam.setCity("Nellore");
+				battingTeam = teamRepository.save(battingTeam);
+
+				Team bowlingTeam = new Team();
+				bowlingTeam.setName(
+						"Module 8 Scorecard Bowling Team " + testId);
+				bowlingTeam.setShortName("S8W" + testId);
+				bowlingTeam.setCity("Nellore");
+				bowlingTeam = teamRepository.save(bowlingTeam);
+
+				// ---------------------------------------------------------
+				// 2. Create players
+				// ---------------------------------------------------------
+
+				Player striker = createPlayer(
+						"Scorecard",
+						"Striker",
+						"S8 Striker " + testId,
+						PlayerRole.BATTER);
+
+				Player nonStriker = createPlayer(
+						"Scorecard",
+						"NonStriker",
+						"S8 Non Striker " + testId,
+						PlayerRole.BATTER);
+
+				Player bowler = createPlayer(
+						"Scorecard",
+						"Bowler",
+						"S8 Bowler " + testId,
+						PlayerRole.BOWLER);
+
+				// ---------------------------------------------------------
+				// 3. Create match
+				// ---------------------------------------------------------
+
+				Match match = new Match();
+				match.setName(
+						"Module 8 Scorecard Integration Test " + testId);
+				match.setFormat(MatchFormat.T20);
+				match.setTotalOvers(1);
+				match.setMaxPlayersPerTeam(2);
+				match.setScheduledAt(Instant.now());
+				match.setVenue("Test Ground");
+				match = matchRepository.save(match);
+
+				MatchTeam battingMatchTeam = new MatchTeam();
+				battingMatchTeam.setMatch(match);
+				battingMatchTeam.setTeam(battingTeam);
+				battingMatchTeam.setSide(MatchTeamSide.TEAM_A);
+				matchTeamRepository.save(battingMatchTeam);
+
+				MatchTeam bowlingMatchTeam = new MatchTeam();
+				bowlingMatchTeam.setMatch(match);
+				bowlingMatchTeam.setTeam(bowlingTeam);
+				bowlingMatchTeam.setSide(MatchTeamSide.TEAM_B);
+				matchTeamRepository.save(bowlingMatchTeam);
+
+				// ---------------------------------------------------------
+				// 4. Create lineups
+				// ---------------------------------------------------------
+
+				createLineup(
+						match,
+						battingTeam,
+						striker,
+						1);
+
+				createLineup(
+						match,
+						battingTeam,
+						nonStriker,
+						2);
+
+				createLineup(
+						match,
+						bowlingTeam,
+						bowler,
+						1);
+
+				// ---------------------------------------------------------
+				// 5. Start innings
+				// ---------------------------------------------------------
+
+				StartInningsRequest inningsRequest =
+						new StartInningsRequest();
+
+				inningsRequest.setBattingTeamId(
+						battingTeam.getId());
+
+				inningsRequest.setBowlingTeamId(
+						bowlingTeam.getId());
+
+				inningsRequest.setInningsNumber(1);
+
+				InningsResponse inningsResponse =
+						inningsService.startInnings(
+								match.getId(),
+								inningsRequest);
+
+				Innings innings =
+						inningsRepository
+								.findById(inningsResponse.getId())
+								.orElseThrow();
+
+				createInningsState(
+						innings,
+						striker,
+						bowler,
+						nonStriker);
+
+				// ---------------------------------------------------------
+				// 6. Record a 4-run delivery
+				// ---------------------------------------------------------
+
+				RecordDeliveryRequest deliveryRequest =
+						createDeliveryRequest(
+								striker,
+								nonStriker,
+								bowler,
+								4);
+
+				deliveryService.recordDelivery(
+						innings.getId(),
+						deliveryRequest);
+
+				// ---------------------------------------------------------
+				// 7. Fetch scorecard
+				// ---------------------------------------------------------
+
+				ScorecardResponse scorecard =
+						scorecardService.getScorecard(
+								match.getId());
+
+				// ---------------------------------------------------------
+				// 8. Verify match information
+				// ---------------------------------------------------------
+
+				assertEquals(
+						match.getId(),
+						scorecard.getMatchId());
+
+				assertEquals(
+						match.getName(),
+						scorecard.getMatchName());
+
+				assertEquals(
+						1,
+						scorecard.getInnings().size());
+
+				// ---------------------------------------------------------
+				// 9. Verify innings information
+				// ---------------------------------------------------------
+
+				var inningsScorecard =
+						scorecard.getInnings().get(0);
+
+				assertEquals(
+						innings.getId(),
+						inningsScorecard.getInningsId());
+
+				assertEquals(
+						1,
+						inningsScorecard.getInningsNumber());
+
+				assertEquals(
+						battingTeam.getId(),
+						inningsScorecard.getBattingTeamId());
+
+				assertEquals(
+						bowlingTeam.getId(),
+						inningsScorecard.getBowlingTeamId());
+
+				assertEquals(
+						4,
+						inningsScorecard.getTotalRuns());
+
+				assertEquals(
+						0,
+						inningsScorecard.getWickets());
+
+				assertEquals(
+						1,
+						inningsScorecard.getLegalBalls());
+
+				assertEquals(
+						InningsStatus.LIVE.toString(),
+						inningsScorecard.getStatus());
+
+				// ---------------------------------------------------------
+				// 10. Verify batting scorecard
+				// ---------------------------------------------------------
+
+				assertEquals(
+						1,
+						inningsScorecard.getBatting().size());
+
+				var strikerResponse =
+						inningsScorecard.getBatting()
+								.stream()
+								.filter(batting ->
+										batting.getPlayerId()
+												.equals(striker.getId()))
+								.findFirst()
+								.orElseThrow();
+
+				assertEquals(
+						4,
+						strikerResponse.getRuns());
+
+				assertEquals(
+						1,
+						strikerResponse.getBallsFaced());
+
+				assertEquals(
+						1,
+						strikerResponse.getFours());
+
+				assertEquals(
+						0,
+						strikerResponse.getSixes());
+
+				                            // ---------------------------------------------------------
+                            // 11. Verify bowling scorecard
+                            // ---------------------------------------------------------
+
+                            assertEquals(
+                                            1,
+                                            inningsScorecard.getBowling().size());
+
+                            var bowlerResponse =
+                                            inningsScorecard.getBowling().get(0);
+
+                            assertEquals(
+                                            bowler.getId(),
+                                            bowlerResponse.getPlayerId());
+
+                            assertEquals(
+                                            1,
+                                            bowlerResponse.getBallsBowled());
+
+                            assertEquals(
+                                            4,
+                                            bowlerResponse.getRunsConceded());
+
+                            assertEquals(
+                                            0,
+                                            bowlerResponse.getWickets());
+
+                            assertEquals(
+                                            "0.1",
+                                            bowlerResponse.getOvers());
+
+                            // ---------------------------------------------------------
+                            // 12. Record a caught wicket
+                            // ---------------------------------------------------------
+
+                            Player fielder = createPlayer(
+                                            "Scorecard",
+                                            "Fielder",
+                                            "S8 Fielder " + testId,
+                                            PlayerRole.ALL_ROUNDER);
+
+                            createLineup(
+                                            match,
+                                            bowlingTeam,
+                                            fielder,
+                                            2);
+
+                            RecordDeliveryRequest wicketRequest =
+                                            createDeliveryRequest(
+                                                            striker,
+                                                            nonStriker,
+                                                            bowler,
+                                                            0);
+
+                            wicketRequest.setWicket(true);
+                            wicketRequest.setWicketType(WicketType.CAUGHT);
+                            wicketRequest.setDismissedPlayerId(
+                                            striker.getId());
+                            wicketRequest.setDismissalEnd(
+                                            DismissalEnd.STRIKER);
+                            wicketRequest.setFielderId(
+                                            fielder.getId());
+
+                            deliveryService.recordDelivery(
+                                            innings.getId(),
+                                            wicketRequest);
+
+                            // ---------------------------------------------------------
+                            // 13. Fetch scorecard after wicket
+                            // ---------------------------------------------------------
+
+                            ScorecardResponse wicketScorecard =
+                                            scorecardService.getScorecard(
+                                                            match.getId());
+
+                            var wicketInningsScorecard =
+                                            wicketScorecard.getInnings().get(0);
+
+                            assertEquals(
+                                            1,
+                                            wicketInningsScorecard.getWickets());
+
+                            assertEquals(
+                                            1,
+                                            wicketInningsScorecard
+                                                            .getFallOfWickets()
+                                                            .size());
+
+                            var fowResponse =
+                                            wicketInningsScorecard
+                                                            .getFallOfWickets()
+                                                            .get(0);
+
+                            assertEquals(
+                                            striker.getId(),
+                                            fowResponse.getDismissedPlayerId());
+
+                            assertEquals(
+                                            striker.getDisplayName(),
+                                            fowResponse.getDismissedPlayerName());
+
+                            assertEquals(
+                                            WicketType.CAUGHT,
+                                            fowResponse.getWicketType());
+
+                            assertEquals(
+                                            1,
+                                            wicketInningsScorecard
+                                                            .getFieldingEvents()
+                                                            .size());
+
+                            var fieldingResponse =
+                                            wicketInningsScorecard
+                                                            .getFieldingEvents()
+                                                            .get(0);
+
+                            assertEquals(
+                                            fielder.getId(),
+                                            fieldingResponse.getFielderId());
+
+                            assertEquals(
+                                            fielder.getDisplayName(),
+                                            fieldingResponse.getFielderName());
+
+                            assertEquals(
+                                            striker.getId(),
+                                            fieldingResponse.getDismissedPlayerId());
+
+                            assertEquals(
+                                            striker.getDisplayName(),
+                                            fieldingResponse.getDismissedPlayerName());
+
+                            assertEquals(
+                                            WicketType.CAUGHT,
+                                            fieldingResponse.getWicketType());
+    }
+
 
 	private void createInningsState(
 				Innings innings,

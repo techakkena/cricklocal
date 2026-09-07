@@ -14,7 +14,7 @@ import com.cricklocal.exception.ResourceNotFoundException;
 import com.cricklocal.repository.InningsRepository;
 import com.cricklocal.repository.MatchRepository;
 import org.springframework.stereotype.Service;
-
+import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 @Service
@@ -49,8 +49,8 @@ public class ScorecardService {
         this.matchResultService = matchResultService;
     }
 
+    @Transactional(readOnly = true)
     public ScorecardResponse getScorecard(Long matchId) {
-
         Match match = matchRepository.findById(matchId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
@@ -58,7 +58,7 @@ public class ScorecardService {
 
         List<Innings> inningsList =
                 inningsRepository
-                        .findByMatchOrderByInningsNumberAsc(match);
+                        .findScorecardInningsByMatch(match);
 
         ScorecardResponse response =
                 new ScorecardResponse();

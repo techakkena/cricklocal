@@ -52,16 +52,22 @@ public class PartnershipService {
                 .findByInningsOrderByPartnershipNumberAsc(innings);
     }
 
+    public List<Partnership> getScorecardByInnings(Innings innings) {
+
+        return partnershipRepository
+                .findScorecardPartnershipsByInnings(innings);
+    }
+
     public Partnership save(Partnership partnership) {
 
-    return partnershipRepository.saveAndFlush(partnership);
-}
+        return partnershipRepository.saveAndFlush(partnership);
+    }
 
     public int getNextPartnershipNumber(Innings innings) {
 
-            List<Partnership> partnerships =
-                    partnershipRepository
-                            .findByInningsOrderByPartnershipNumberAsc(innings);
+        List<Partnership> partnerships =
+                partnershipRepository
+                        .findByInningsOrderByPartnershipNumberAsc(innings);
 
         return partnerships.size() + 1;
     }
@@ -104,7 +110,7 @@ public class PartnershipService {
     public List<PartnershipResponse> getResponsesByInnings(
             Innings innings) {
 
-        return getByInnings(innings)
+        return getScorecardByInnings(innings)
                 .stream()
                 .map(this::toResponse)
                 .toList();

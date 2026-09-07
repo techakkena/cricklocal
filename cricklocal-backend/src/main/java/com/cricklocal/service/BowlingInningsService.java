@@ -44,9 +44,16 @@ public class BowlingInningsService {
                 .findByInningsOrderByIdAsc(innings);
     }
 
+    public List<BowlingInnings> getScorecardByInnings(
+                Innings innings) {
+
+        return bowlingInningsRepository
+                .findScorecardBowlingByInnings(innings);
+    }
+
     public List<BowlingInningsResponse> getResponsesByInnings(Innings innings) {
 
-        return getByInnings(innings)
+        return getScorecardByInnings(innings)
                 .stream()
                 .map(this::toResponse)
                 .toList();
