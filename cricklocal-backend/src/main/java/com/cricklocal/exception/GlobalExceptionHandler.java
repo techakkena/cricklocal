@@ -1,39 +1,38 @@
 package com.cricklocal.exception;
 
+import com.cricklocal.dto.ErrorResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import org.springframework.web.bind.MethodArgumentNotValidException;
-
-import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(ResourceNotFoundException.class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
-    public Map<String, String> handleResourceNotFound(
+    public ErrorResponse handleResourceNotFound(
             ResourceNotFoundException exception) {
 
-        return Map.of(
-                "message", exception.getMessage()
-        );
+        return new ErrorResponse(
+                HttpStatus.NOT_FOUND.value(),
+                exception.getMessage());
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Map<String, String> handleIllegalArgument(
+    public ErrorResponse handleIllegalArgument(
             IllegalArgumentException exception) {
 
-        return Map.of(
-                "message", exception.getMessage()
-        );
+        return new ErrorResponse(
+                HttpStatus.BAD_REQUEST.value(),
+                exception.getMessage());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Map<String, String> handleValidationException(
+    public ErrorResponse handleValidationException(
             MethodArgumentNotValidException exception) {
 
         String message = exception.getBindingResult()
@@ -43,8 +42,18 @@ public class GlobalExceptionHandler {
                 .map(error -> error.getDefaultMessage())
                 .orElse("Validation failed");
 
-        return Map.of(
-                "message", message
-        );
+        return new ErrorResponse(
+                HttpStatus.BAD_REQUEST.value(),
+                message);
+    }
+
+    @ExceptionHandler(Exception.class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    public ErrorResponse handleGenericException(
+            Exception exception) {
+
+        return new ErrorResponse(
+                HttpStatus.INTERNAL_SERVER_ERROR.value(),
+                "An unexpected error occurred");
     }
 }

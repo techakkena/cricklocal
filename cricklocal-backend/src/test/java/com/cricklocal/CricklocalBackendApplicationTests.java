@@ -35,9 +35,13 @@ import com.cricklocal.service.PlayerHistoryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import com.cricklocal.enums.PlayerRole;
 import com.cricklocal.service.LeaderboardService;
 import com.cricklocal.exception.ResourceNotFoundException;
+import com.cricklocal.dto.ErrorResponse;
+import com.cricklocal.exception.GlobalExceptionHandler;
 import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -45,6 +49,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+@AutoConfigureMockMvc
 @SpringBootTest
 class CricklocalBackendApplicationTests {
 
@@ -92,6 +97,9 @@ class CricklocalBackendApplicationTests {
 
 	@Autowired
 	private PlayerHistoryService playerHistoryService;
+
+	@Autowired
+	private MockMvc mockMvc;
 
 	@Test
 	void leaderboardShouldReturnTopRunScorersFromCompletedMatches() {
@@ -1447,7 +1455,7 @@ class CricklocalBackendApplicationTests {
 																rolledBackMatch));
 	}
 
-		@Test
+	@Test
 	void scorecardShouldAssembleInningsBattingAndBowlingData() {
 
 				String testId =
@@ -2053,6 +2061,148 @@ class CricklocalBackendApplicationTests {
 			assertThrows(
 					ResourceNotFoundException.class,
 					() -> playerHistoryService.getPlayerMatchHistory(999999999L));
+	}
+
+	@Test
+	void apiShouldReturnStandardErrorResponseForUnknownPlayer() throws Exception {
+
+			mockMvc.perform(
+					org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+								.get("/api/players/999999999/career-stats"))
+						.andExpect(
+								org.springframework.test.web.servlet.result.MockMvcResultMatchers
+										.status()
+										.isNotFound())
+						.andExpect(
+								org.springframework.test.web.servlet.result.MockMvcResultMatchers
+										.jsonPath("$.status")
+										.value(404))
+						.andExpect(
+								org.springframework.test.web.servlet.result.MockMvcResultMatchers
+										.jsonPath("$.message")
+										.value("Player not found: 999999999"))
+						.andExpect(
+								org.springframework.test.web.servlet.result.MockMvcResultMatchers
+										.jsonPath("$.timestamp")
+										.exists());
+	}
+
+	@Test
+	void apiShouldReturnStandardErrorResponseForValidationFailure()
+			throws Exception {
+
+			mockMvc.perform(
+					org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+							.post("/api/teams")
+							.contentType(
+									org.springframework.http.MediaType.APPLICATION_JSON)
+							.content("""
+									{
+										"name": "",
+										"shortName": "TEST"
+									}
+									"""))
+					.andExpect(
+							org.springframework.test.web.servlet.result.MockMvcResultMatchers
+									.status()
+									.isBadRequest())
+					.andExpect(
+							org.springframework.test.web.servlet.result.MockMvcResultMatchers
+									.jsonPath("$.status")
+									.value(400))
+					.andExpect(
+							org.springframework.test.web.servlet.result.MockMvcResultMatchers
+									.jsonPath("$.message")
+									.value("Team name is required"))
+					.andExpect(
+							org.springframework.test.web.servlet.result.MockMvcResultMatchers
+									.jsonPath("$.timestamp")
+									.exists());
+	}
+
+	@Test
+	void apiShouldReturnStandardErrorResponseForInvalidInningsTeams()
+			throws Exception {
+
+				String testId = String.valueOf(System.currentTimeMillis());
+
+				Team team = new Team();
+				team.setName("Module 12 Error Team " + testId);
+				team.setShortName("M12E" + testId);
+				team.setCity("Nellore");
+				team = teamRepository.save(team);
+
+				Match match = new Match();
+				match.setName("Module 12 Error Match " + testId);
+				match.setMatchNumber(1);
+				match.setFormat(MatchFormat.T20);
+				match.setTotalOvers(1);
+				match.setMaxPlayersPerTeam(3);
+				match.setScheduledAt(Instant.now());
+				match.setStatus(MatchStatus.SCHEDULED);
+				match = matchRepository.save(match);
+
+				MatchTeam matchTeam = new MatchTeam();
+				matchTeam.setMatch(match);
+				matchTeam.setTeam(team);
+				matchTeam.setSide(MatchTeamSide.TEAM_A);
+				matchTeamRepository.save(matchTeam);
+
+				mockMvc.perform(
+						org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+								.post("/api/matches/"
+										+ match.getId()
+										+ "/innings")
+								.contentType(
+										org.springframework.http.MediaType.APPLICATION_JSON)
+								.content("""
+										{
+											"battingTeamId": %d,
+											"bowlingTeamId": %d,
+											"inningsNumber": 1
+										}
+										""".formatted(
+										team.getId(),
+										team.getId())))
+						.andExpect(
+								org.springframework.test.web.servlet.result.MockMvcResultMatchers
+										.status()
+										.isBadRequest())
+						.andExpect(
+								org.springframework.test.web.servlet.result.MockMvcResultMatchers
+										.jsonPath("$.status")
+										.value(400))
+						.andExpect(
+								org.springframework.test.web.servlet.result.MockMvcResultMatchers
+										.jsonPath("$.message")
+										.value(
+												"Batting team and bowling team must be different"))
+						.andExpect(
+								org.springframework.test.web.servlet.result.MockMvcResultMatchers
+										.jsonPath("$.timestamp")
+										.exists());
+	}
+
+	@Test
+	void genericExceptionHandlerShouldReturnStandardErrorResponse() {
+
+			GlobalExceptionHandler handler =
+					new GlobalExceptionHandler();
+
+			ErrorResponse response =
+					handler.handleGenericException(
+							new RuntimeException("internal details"));
+
+			assertEquals(
+					500,
+					response.getStatus());
+
+			assertEquals(
+					"An unexpected error occurred",
+					response.getMessage());
+
+			assertTrue(
+					response.getTimestamp() != null);
 	}
 
 	private void createInningsState(
