@@ -1186,6 +1186,163 @@ class CricklocalBackendApplicationTests {
     }
 
 	@Test
+    void backendShouldVerifyCompleteMatchLifecycleAcrossModules() {
+
+                String testId = String.valueOf(System.currentTimeMillis());
+
+                Team teamA = new Team();
+                teamA.setName("Module 13 E2E Team A " + testId);
+                teamA.setShortName("E13A" + testId);
+                teamA.setCity("Nellore");
+                teamA = teamRepository.save(teamA);
+
+                Team teamB = new Team();
+                teamB.setName("Module 13 E2E Team B " + testId);
+                teamB.setShortName("E13B" + testId);
+                teamB.setCity("Nellore");
+                teamB = teamRepository.save(teamB);
+
+                Player batterA = createPlayer(
+                                "E2E", "BatterA " + testId,
+                                "E2E Batter A " + testId, PlayerRole.BATTER);
+
+                Player bowlerA = createPlayer(
+                                "E2E", "BowlerA " + testId,
+                                "E2E Bowler A " + testId, PlayerRole.BOWLER);
+
+                Player batterB = createPlayer(
+                                "E2E", "BatterB " + testId,
+                                "E2E Batter B " + testId, PlayerRole.BATTER);
+
+                Player bowlerB = createPlayer(
+                                "E2E", "BowlerB " + testId,
+                                "E2E Bowler B " + testId, PlayerRole.BOWLER);
+
+                Match match = new Match();
+                match.setName("Module 13 E2E Match " + testId);
+                match.setMatchNumber(1);
+                match.setFormat(MatchFormat.T20);
+                match.setTotalOvers(1);
+                match.setMaxPlayersPerTeam(2);
+                match.setScheduledAt(Instant.now());
+                match.setVenue("E2E Test Ground");
+                match = matchRepository.save(match);
+
+                MatchTeam matchTeamA = new MatchTeam();
+                matchTeamA.setMatch(match);
+                matchTeamA.setTeam(teamA);
+                matchTeamA.setSide(MatchTeamSide.TEAM_A);
+                matchTeamRepository.save(matchTeamA);
+
+                MatchTeam matchTeamB = new MatchTeam();
+                matchTeamB.setMatch(match);
+                matchTeamB.setTeam(teamB);
+                matchTeamB.setSide(MatchTeamSide.TEAM_B);
+                matchTeamRepository.save(matchTeamB);
+
+                createLineup(match, teamA, batterA, 1);
+                createLineup(match, teamA, bowlerA, 2);
+                createLineup(match, teamB, batterB, 1);
+                createLineup(match, teamB, bowlerB, 2);
+
+                StartInningsRequest innings1Request = new StartInningsRequest();
+                innings1Request.setBattingTeamId(teamA.getId());
+                innings1Request.setBowlingTeamId(teamB.getId());
+                innings1Request.setInningsNumber(1);
+
+                InningsResponse innings1Response =
+                                inningsService.startInnings(match.getId(), innings1Request);
+
+                Innings innings1 =
+                                inningsRepository.findById(innings1Response.getId()).orElseThrow();
+
+                createInningsState(innings1, batterA, bowlerB, bowlerA);
+
+                deliveryService.recordDelivery(
+                                innings1.getId(),
+                                createDeliveryRequest(batterA, bowlerA, bowlerB, 3));
+
+                inningsService.declareInnings(innings1.getId());
+
+                StartInningsRequest innings2Request = new StartInningsRequest();
+                innings2Request.setBattingTeamId(teamB.getId());
+                innings2Request.setBowlingTeamId(teamA.getId());
+                innings2Request.setInningsNumber(2);
+
+                InningsResponse innings2Response =
+                                inningsService.startInnings(match.getId(), innings2Request);
+
+                Innings innings2 =
+                                inningsRepository.findById(innings2Response.getId()).orElseThrow();
+
+                createInningsState(innings2, batterB, bowlerA, bowlerB);
+
+                deliveryService.recordDelivery(
+                                innings2.getId(),
+                                createDeliveryRequest(batterB, bowlerB, bowlerA, 4));
+
+                Match completedMatch =
+                                matchRepository.findById(match.getId()).orElseThrow();
+
+                assertEquals(MatchStatus.COMPLETED, completedMatch.getStatus());
+                assertTrue(matchResultRepository.existsByMatch(completedMatch));
+
+                ScorecardResponse scorecard =
+								scorecardService.getScorecard(match.getId());
+
+				assertEquals(match.getId(), scorecard.getMatchId());
+				assertEquals("COMPLETED", scorecard.getStatus());
+				assertEquals(2, scorecard.getInnings().size());
+				assertTrue(scorecard.getResult() != null);
+				assertEquals(teamB.getId(), scorecard.getResult().getWinningTeamId());
+				assertEquals(1, scorecard.getResult().getMarginWickets());
+
+                CareerStatsResponse careerStats =
+                                careerStatisticsService.getCareerStats(batterA.getId());
+
+                assertEquals(batterA.getId(), careerStats.getPlayerId());
+                assertEquals(3L, careerStats.getBatting().getRuns());
+                assertEquals(1L, careerStats.getBatting().getMatches());
+
+                var leaderboard = leaderboardService.getTopRunScorers();
+
+                final Long e2eBatterAId = batterA.getId();
+                final Long e2eMatchId = match.getId();
+                var leaderboardEntry =
+                                leaderboard.getEntries().stream()
+                                                .filter(entry ->
+                                                                entry.getPlayerId().equals(e2eBatterAId))
+                                                .findFirst()
+                                                .orElseThrow();
+
+                assertEquals(3L, leaderboardEntry.getPrimaryValue());
+
+                var matchHistory = matchService.getMatchHistory();
+
+                var historyEntry =
+                                matchHistory.stream()
+                                                .filter(item -> item.getId().equals(e2eMatchId))
+                                                .findFirst()
+                                                .orElseThrow();
+
+                assertEquals("Module 13 E2E Match " + testId, historyEntry.getName());
+                assertEquals(MatchStatus.COMPLETED, historyEntry.getStatus());
+
+                var playerHistory =
+                                playerHistoryService.getPlayerMatchHistory(e2eBatterAId);
+
+                var playerHistoryEntry =
+                                playerHistory.stream()
+                                                .filter(item -> item.getMatchId().equals(e2eMatchId))
+                                                .findFirst()
+                                                .orElseThrow();
+
+                assertEquals(MatchStatus.COMPLETED, playerHistoryEntry.getMatchStatus());
+                assertEquals(teamA.getId(), playerHistoryEntry.getTeamId());
+                assertTrue(playerHistoryEntry.getPlaying());
+    }
+
+	@Test
 	void undoShouldRollbackAutomaticallyCompletedMatch() {
 
 				String testId =
