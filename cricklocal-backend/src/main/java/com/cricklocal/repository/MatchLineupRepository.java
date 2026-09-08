@@ -5,6 +5,7 @@ import com.cricklocal.entity.MatchLineup;
 import com.cricklocal.entity.Player;
 import com.cricklocal.entity.Team;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
 import java.util.Optional;
@@ -44,4 +45,16 @@ public interface MatchLineupRepository
             Match match,
             Team team
     );
+
+    @Query("""
+        select ml
+        from MatchLineup ml
+        join fetch ml.match m
+        join fetch ml.player p
+        join fetch ml.team t
+        where p = :player
+          and ml.playing = true
+        order by m.scheduledAt desc, ml.id desc
+        """)
+    List<MatchLineup> findPlayerMatchHistory(Player player);
 }

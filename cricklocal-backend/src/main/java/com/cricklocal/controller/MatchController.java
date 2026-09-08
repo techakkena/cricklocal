@@ -1,13 +1,12 @@
 package com.cricklocal.controller;
 
 import com.cricklocal.dto.CreateMatchRequest;
+import com.cricklocal.dto.MatchResponse;
 import com.cricklocal.entity.Match;
 import com.cricklocal.service.MatchService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
-import com.cricklocal.dto.MatchResponse;
-import org.springframework.web.bind.annotation.PathVariable;
 
 import java.util.List;
 
@@ -24,7 +23,7 @@ public class MatchController {
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Match createMatch(
-        @Valid @RequestBody CreateMatchRequest request) {
+            @Valid @RequestBody CreateMatchRequest request) {
 
         return matchService.createMatch(request);
     }
@@ -34,8 +33,15 @@ public class MatchController {
         return matchService.getAllMatches();
     }
 
+    @GetMapping("/history")
+    public List<MatchResponse> getMatchHistory() {
+        return matchService.getMatchHistory();
+    }
+
     @GetMapping("/{matchId}")
-    public MatchResponse getMatchById(@PathVariable Long matchId) {
+    public MatchResponse getMatchById(
+            @PathVariable Long matchId) {
+
         return matchService.getMatchById(matchId);
     }
 }

@@ -143,6 +143,15 @@ public class MatchService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public java.util.List<MatchResponse> getMatchHistory() {
+
+                return matchRepository.findMatchHistory()
+                        .stream()
+                        .map(this::toMatchResponse)
+                        .toList();
+    }
+
     private MatchResponse toMatchResponse(Match match) {
 
         MatchResponse response = new MatchResponse();

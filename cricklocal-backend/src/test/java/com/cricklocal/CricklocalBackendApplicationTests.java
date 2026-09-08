@@ -30,6 +30,8 @@ import com.cricklocal.service.DeliveryService;
 import com.cricklocal.service.InningsService;
 import com.cricklocal.service.ScorecardService;
 import com.cricklocal.service.CareerStatisticsService;
+import com.cricklocal.service.MatchService;
+import com.cricklocal.service.PlayerHistoryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -84,6 +86,12 @@ class CricklocalBackendApplicationTests {
 
 	@Autowired
 	private LeaderboardService leaderboardService;
+
+	@Autowired
+	private MatchService matchService;
+
+	@Autowired
+	private PlayerHistoryService playerHistoryService;
 
 	@Test
 	void leaderboardShouldReturnTopRunScorersFromCompletedMatches() {
@@ -1812,6 +1820,240 @@ class CricklocalBackendApplicationTests {
                                             fieldingResponse.getWicketType());
     }
 
+	@Test
+	void matchHistoryShouldReturnMatchesNewestFirst() {
+
+				String testId = String.valueOf(System.currentTimeMillis());
+
+				Team teamA = new Team();
+				teamA.setName("Module 11 History Team A " + testId);
+				teamA.setShortName("M11A" + testId);
+				teamA.setCity("Nellore");
+				teamA = teamRepository.save(teamA);
+
+				Team teamB = new Team();
+				teamB.setName("Module 11 History Team B " + testId);
+				teamB.setShortName("M11B" + testId);
+				teamB.setCity("Nellore");
+				teamB = teamRepository.save(teamB);
+
+				Match olderMatch = new Match();
+				olderMatch.setName("Module 11 Older Match " + testId);
+				olderMatch.setMatchNumber(1);
+				olderMatch.setFormat(MatchFormat.T20);
+				olderMatch.setTotalOvers(1);
+				olderMatch.setMaxPlayersPerTeam(3);
+				olderMatch.setScheduledAt(
+						Instant.parse("2026-01-01T10:00:00Z"));
+				olderMatch.setStatus(MatchStatus.COMPLETED);
+				olderMatch = matchRepository.save(olderMatch);
+				final Long olderMatchId = olderMatch.getId();
+
+				MatchTeam olderTeamA = new MatchTeam();
+				olderTeamA.setMatch(olderMatch);
+				olderTeamA.setTeam(teamA);
+				olderTeamA.setSide(MatchTeamSide.TEAM_A);
+				matchTeamRepository.save(olderTeamA);
+
+				MatchTeam olderTeamB = new MatchTeam();
+				olderTeamB.setMatch(olderMatch);
+				olderTeamB.setTeam(teamB);
+				olderTeamB.setSide(MatchTeamSide.TEAM_B);
+				matchTeamRepository.save(olderTeamB);
+
+				Match newerMatch = new Match();
+				newerMatch.setName("Module 11 Newer Match " + testId);
+				newerMatch.setMatchNumber(2);
+				newerMatch.setFormat(MatchFormat.T20);
+				newerMatch.setTotalOvers(1);
+				newerMatch.setMaxPlayersPerTeam(3);
+				newerMatch.setScheduledAt(
+						Instant.parse("2026-02-01T10:00:00Z"));
+				newerMatch.setStatus(MatchStatus.COMPLETED);
+				newerMatch = matchRepository.save(newerMatch);
+				final Long newerMatchId = newerMatch.getId();
+
+				MatchTeam newerTeamA = new MatchTeam();
+				newerTeamA.setMatch(newerMatch);
+				newerTeamA.setTeam(teamA);
+				newerTeamA.setSide(MatchTeamSide.TEAM_A);
+				matchTeamRepository.save(newerTeamA);
+
+				MatchTeam newerTeamB = new MatchTeam();
+				newerTeamB.setMatch(newerMatch);
+				newerTeamB.setTeam(teamB);
+				newerTeamB.setSide(MatchTeamSide.TEAM_B);
+				matchTeamRepository.save(newerTeamB);
+
+				var history = matchService.getMatchHistory();
+
+				var newerEntry = history.stream()
+						.filter(match ->
+								match.getId().equals(newerMatchId))
+						.findFirst()
+						.orElseThrow();
+
+				var olderEntry = history.stream()
+						.filter(match ->
+								match.getId().equals(olderMatchId))
+						.findFirst()
+						.orElseThrow();
+
+				assertTrue(
+						history.indexOf(newerEntry)
+								< history.indexOf(olderEntry));
+
+				assertEquals(
+						"Module 11 Newer Match " + testId,
+						newerEntry.getName());
+
+				assertEquals(
+						"Module 11 Older Match " + testId,
+						olderEntry.getName());
+	}
+
+	@Test
+	void playerHistoryShouldReturnPlayingMatchesNewestFirst() {
+
+			String testId = String.valueOf(System.currentTimeMillis());
+
+			Team teamA = new Team();
+			teamA.setName("Module 11 Player History Team A " + testId);
+			teamA.setShortName("M11PA" + testId);
+			teamA.setCity("Nellore");
+			teamA = teamRepository.save(teamA);
+
+			Team teamB = new Team();
+			teamB.setName("Module 11 Player History Team B " + testId);
+			teamB.setShortName("M11PB" + testId);
+			teamB.setCity("Nellore");
+			teamB = teamRepository.save(teamB);
+
+			Player player = createPlayer(
+					"History",
+					"Player " + testId,
+					"History Player " + testId,
+					PlayerRole.BATTER);
+
+			Player otherPlayer = createPlayer(
+					"History",
+					"Other " + testId,
+					"History Other " + testId,
+					PlayerRole.BATTER);
+
+			Match olderMatch = new Match();
+			olderMatch.setName("Module 11 Player Older Match " + testId);
+			olderMatch.setMatchNumber(1);
+			olderMatch.setFormat(MatchFormat.T20);
+			olderMatch.setTotalOvers(1);
+			olderMatch.setMaxPlayersPerTeam(3);
+			olderMatch.setScheduledAt(
+					Instant.parse("2026-03-01T10:00:00Z"));
+			olderMatch.setStatus(MatchStatus.COMPLETED);
+			olderMatch = matchRepository.save(olderMatch);
+
+			MatchTeam olderTeamA = new MatchTeam();
+			olderTeamA.setMatch(olderMatch);
+			olderTeamA.setTeam(teamA);
+			olderTeamA.setSide(MatchTeamSide.TEAM_A);
+			matchTeamRepository.save(olderTeamA);
+
+			MatchTeam olderTeamB = new MatchTeam();
+			olderTeamB.setMatch(olderMatch);
+			olderTeamB.setTeam(teamB);
+			olderTeamB.setSide(MatchTeamSide.TEAM_B);
+			matchTeamRepository.save(olderTeamB);
+
+			createLineup(
+					olderMatch,
+					teamA,
+					player,
+					1);
+
+			createLineup(
+					olderMatch,
+					teamA,
+					otherPlayer,
+					2);
+
+			Match newerMatch = new Match();
+			newerMatch.setName("Module 11 Player Newer Match " + testId);
+			newerMatch.setMatchNumber(2);
+			newerMatch.setFormat(MatchFormat.T20);
+			newerMatch.setTotalOvers(1);
+			newerMatch.setMaxPlayersPerTeam(3);
+			newerMatch.setScheduledAt(
+					Instant.parse("2026-04-01T10:00:00Z"));
+			newerMatch.setStatus(MatchStatus.LIVE);
+			newerMatch = matchRepository.save(newerMatch);
+
+			MatchTeam newerTeamA = new MatchTeam();
+			newerTeamA.setMatch(newerMatch);
+			newerTeamA.setTeam(teamA);
+			newerTeamA.setSide(MatchTeamSide.TEAM_A);
+			matchTeamRepository.save(newerTeamA);
+
+			MatchTeam newerTeamB = new MatchTeam();
+			newerTeamB.setMatch(newerMatch);
+			newerTeamB.setTeam(teamB);
+			newerTeamB.setSide(MatchTeamSide.TEAM_B);
+			matchTeamRepository.save(newerTeamB);
+
+			createLineup(
+					newerMatch,
+					teamA,
+					player,
+					1);
+
+			final Long olderMatchId = olderMatch.getId();
+			final Long newerMatchId = newerMatch.getId();
+
+			var history =
+					playerHistoryService.getPlayerMatchHistory(
+							player.getId());
+
+			assertEquals(
+					2,
+					history.size());
+
+			assertEquals(
+					newerMatchId,
+					history.get(0).getMatchId());
+
+			assertEquals(
+					olderMatchId,
+					history.get(1).getMatchId());
+
+			assertEquals(
+					"Module 11 Player Newer Match " + testId,
+					history.get(0).getMatchName());
+
+			assertEquals(
+					"Module 11 Player Older Match " + testId,
+					history.get(1).getMatchName());
+
+			assertEquals(
+					teamA.getId(),
+					history.get(0).getTeamId());
+
+			assertEquals(
+					teamA.getName(),
+					history.get(0).getTeamName());
+
+			assertTrue(
+					history.get(0).getPlaying());
+
+			assertTrue(
+					history.get(1).getPlaying());
+	}
+
+	@Test
+	void playerHistoryShouldRejectUnknownPlayer() {
+
+			assertThrows(
+					ResourceNotFoundException.class,
+					() -> playerHistoryService.getPlayerMatchHistory(999999999L));
+	}
 
 	private void createInningsState(
 				Innings innings,
