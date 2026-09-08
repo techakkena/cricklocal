@@ -5,6 +5,7 @@ import com.cricklocal.entity.InningsState;
 import com.cricklocal.dto.RecordDeliveryRequest;
 import com.cricklocal.dto.StartInningsRequest;
 import com.cricklocal.dto.ScorecardResponse;
+import com.cricklocal.dto.CareerStatsResponse;
 import com.cricklocal.entity.Innings;
 import com.cricklocal.entity.Match;
 import com.cricklocal.entity.MatchLineup;
@@ -28,15 +29,18 @@ import com.cricklocal.repository.MatchResultRepository;
 import com.cricklocal.service.DeliveryService;
 import com.cricklocal.service.InningsService;
 import com.cricklocal.service.ScorecardService;
+import com.cricklocal.service.CareerStatisticsService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import com.cricklocal.enums.PlayerRole;
+import com.cricklocal.exception.ResourceNotFoundException;
 import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 @SpringBootTest
 class CricklocalBackendApplicationTests {
@@ -73,6 +77,458 @@ class CricklocalBackendApplicationTests {
 
 	@Autowired
 	private ScorecardService scorecardService;
+
+	@Autowired
+	private CareerStatisticsService careerStatisticsService;
+
+
+	@Test
+    void careerStatisticsShouldAggregateCompletedMatchBattingBowlingAndFielding() {
+
+			String testId = String.valueOf(System.currentTimeMillis());
+
+			Team teamA = new Team();
+			teamA.setName("Module 9 Career Team A " + testId);
+			teamA.setShortName("M9A" + testId);
+			teamA.setCity("Nellore");
+			teamA = teamRepository.save(teamA);
+
+			Team teamB = new Team();
+			teamB.setName("Module 9 Career Team B " + testId);
+			teamB.setShortName("M9B" + testId);
+			teamB.setCity("Nellore");
+			teamB = teamRepository.save(teamB);
+
+			Player batterA1 = createPlayer(
+					"Career", "Batter A1 " + testId,
+					"Career Batter A1 " + testId,
+					PlayerRole.BATTER);
+
+			Player batterA2 = createPlayer(
+					"Career", "Batter A2 " + testId,
+					"Career Batter A2 " + testId,
+					PlayerRole.BATTER);
+
+			Player batterA3 = createPlayer(
+					"Career", "Batter A3 " + testId,
+					"Career Batter A3 " + testId,
+					PlayerRole.BATTER);
+
+			Player batterB1 = createPlayer(
+					"Career", "Batter B1 " + testId,
+					"Career Batter B1 " + testId,
+					PlayerRole.BATTER);
+
+			Player batterB2 = createPlayer(
+					"Career", "Batter B2 " + testId,
+					"Career Batter B2 " + testId,
+					PlayerRole.BATTER);
+
+			Player batterB3 = createPlayer(
+					"Career", "Batter B3 " + testId,
+					"Career Batter B3 " + testId,
+					PlayerRole.BATTER);
+
+			Match match = new Match();
+			match.setName("Module 9 Career Match " + testId);
+			match.setMatchNumber(1);
+			match.setFormat(MatchFormat.T20);
+			match.setTotalOvers(1);
+			match.setMaxPlayersPerTeam(3);
+        match.setScheduledAt(Instant.now());
+			match.setStatus(MatchStatus.SCHEDULED);
+			match = matchRepository.save(match);
+
+			MatchTeam matchTeamA = new MatchTeam();
+			matchTeamA.setMatch(match);
+			matchTeamA.setTeam(teamA);
+			matchTeamA.setSide(MatchTeamSide.TEAM_A);
+			matchTeamRepository.save(matchTeamA);
+
+			MatchTeam matchTeamB = new MatchTeam();
+			matchTeamB.setMatch(match);
+			matchTeamB.setTeam(teamB);
+			matchTeamB.setSide(MatchTeamSide.TEAM_B);
+			matchTeamRepository.save(matchTeamB);
+
+			createLineup(match, teamA, batterA1, 1);
+			createLineup(match, teamA, batterA2, 2);
+			createLineup(match, teamA, batterA3, 3);
+
+			createLineup(match, teamB, batterB1, 1);
+			createLineup(match, teamB, batterB2, 2);
+			createLineup(match, teamB, batterB3, 3);
+
+			StartInningsRequest innings1Request =
+                new StartInningsRequest();
+
+        innings1Request.setBattingTeamId(teamA.getId());
+        innings1Request.setBowlingTeamId(teamB.getId());
+        innings1Request.setInningsNumber(1);
+
+        inningsService.startInnings(
+                match.getId(),
+                innings1Request);
+
+			Innings innings1 =
+					inningsRepository.findByMatchAndInningsNumber(
+							match, 1)
+							.orElseThrow();
+
+			createInningsState(
+					innings1,
+					batterA1,
+					batterB1,
+					batterA2);
+
+			RecordDeliveryRequest scoringDelivery =
+					createDeliveryRequest(
+							batterA1,
+							batterA2,
+							batterB1,
+																		4);
+
+			deliveryService.recordDelivery(
+					innings1.getId(),
+					scoringDelivery);
+
+			RecordDeliveryRequest wicketDelivery =
+					createDeliveryRequest(
+							batterA1,
+							batterA2,
+							batterB1,
+							0);
+
+			wicketDelivery.setWicket(true);
+			wicketDelivery.setWicketType(WicketType.CAUGHT);
+			wicketDelivery.setDismissedPlayerId(batterA1.getId());
+			wicketDelivery.setFielderId(batterB2.getId());
+			wicketDelivery.setDismissalEnd(DismissalEnd.STRIKER);
+			wicketDelivery.setNewBatterId(batterA3.getId());
+
+			deliveryService.recordDelivery(
+					innings1.getId(),
+					wicketDelivery);
+
+			inningsService.declareInnings(innings1.getId());
+
+			StartInningsRequest innings2Request =
+                new StartInningsRequest();
+
+        innings2Request.setBattingTeamId(teamB.getId());
+        innings2Request.setBowlingTeamId(teamA.getId());
+        innings2Request.setInningsNumber(2);
+
+        inningsService.startInnings(
+                match.getId(),
+                innings2Request);
+
+			Innings innings2 =
+					inningsRepository.findByMatchAndInningsNumber(
+							match, 2)
+							.orElseThrow();
+
+			createInningsState(
+                                    innings2,
+                                    batterB1,
+                                    batterA2,
+                                    batterB2);
+
+			RecordDeliveryRequest targetDelivery =
+					createDeliveryRequest(
+							batterB1,
+							batterB2,
+							batterA2,
+																		5);
+
+			deliveryService.recordDelivery(
+					innings2.getId(),
+					targetDelivery);
+
+			Match completedMatch =
+					matchRepository.findById(match.getId())
+							.orElseThrow();
+
+			assertEquals(
+					MatchStatus.COMPLETED,
+					completedMatch.getStatus());
+
+			CareerStatsResponse batterStats =
+					careerStatisticsService.getCareerStats(
+							batterA1.getId());
+
+			assertEquals(batterA1.getId(), batterStats.getPlayerId());
+			assertEquals(
+					1L,
+					batterStats.getBatting().getMatches());
+			assertEquals(
+					1L,
+					batterStats.getBatting().getInnings());
+			assertEquals(
+                                    4L,
+					batterStats.getBatting().getRuns());
+			assertEquals(
+					2L,
+					batterStats.getBatting().getBallsFaced());
+			assertEquals(
+					1L,
+					batterStats.getBatting().getFours());
+			assertEquals(
+					0L,
+					batterStats.getBatting().getSixes());
+			assertEquals(
+					1L,
+					batterStats.getBatting().getDismissals());
+			assertEquals(
+                                    4L,
+					batterStats.getBatting().getHighestScore());
+			assertEquals(
+                                    4.00,
+					batterStats.getBatting().getAverage().doubleValue(),
+					0.001);
+			assertEquals(
+                                    200.00,
+					batterStats.getBatting().getStrikeRate().doubleValue(),
+					0.001);
+
+			CareerStatsResponse bowlerStats =
+					careerStatisticsService.getCareerStats(
+							batterB1.getId());
+
+			assertEquals(
+					1L,
+					bowlerStats.getBowling().getMatches());
+			assertEquals(
+					1L,
+					bowlerStats.getBowling().getInnings());
+			assertEquals(
+					2L,
+					bowlerStats.getBowling().getBallsBowled());
+			assertEquals(
+                                    4L,
+					bowlerStats.getBowling().getRunsConceded());
+			assertEquals(
+					1L,
+					bowlerStats.getBowling().getWickets());
+			assertEquals(
+                                    12.00,
+					bowlerStats.getBowling().getEconomy().doubleValue(),
+					0.001);
+			assertEquals(
+                                    4.00,
+					bowlerStats.getBowling().getAverage().doubleValue(),
+					0.001);
+
+			CareerStatsResponse fielderStats =
+					careerStatisticsService.getCareerStats(
+							batterB2.getId());
+
+			assertEquals(
+					1L,
+					fielderStats.getFielding().getMatches());
+			assertEquals(
+					1L,
+					fielderStats.getFielding().getFieldingDismissals());
+			assertEquals(
+					1L,
+					fielderStats.getFielding().getCatches());
+			assertEquals(
+					0L,
+					fielderStats.getFielding().getRunOuts());
+			assertEquals(
+					0L,
+					fielderStats.getFielding().getStumpings());
+	}
+
+
+    @Test
+    void careerStatisticsShouldIgnoreNonCompletedMatches() {
+
+        String testId = String.valueOf(System.currentTimeMillis());
+
+        Team teamA = new Team();
+        teamA.setName("Module 9 Filter Team A " + testId);
+        teamA.setShortName("F9A" + testId);
+        teamA.setCity("Nellore");
+        teamA = teamRepository.save(teamA);
+
+        Team teamB = new Team();
+        teamB.setName("Module 9 Filter Team B " + testId);
+        teamB.setShortName("F9B" + testId);
+        teamB.setCity("Nellore");
+        teamB = teamRepository.save(teamB);
+
+        Player batter = createPlayer(
+                "Filter", "Batter " + testId,
+                "Filter Batter " + testId,
+                PlayerRole.BATTER);
+
+        Player nonStriker = createPlayer(
+                "Filter", "NonStriker " + testId,
+                "Filter NonStriker " + testId,
+                PlayerRole.BATTER);
+
+        Player bowler = createPlayer(
+                "Filter", "Bowler " + testId,
+                "Filter Bowler " + testId,
+                PlayerRole.BOWLER);
+
+        Match completedMatch = new Match();
+        completedMatch.setName("Module 9 Filter Completed " + testId);
+        completedMatch.setMatchNumber(1);
+        completedMatch.setFormat(MatchFormat.T20);
+        completedMatch.setTotalOvers(1);
+        completedMatch.setMaxPlayersPerTeam(2);
+        completedMatch.setScheduledAt(Instant.now());
+        completedMatch = matchRepository.save(completedMatch);
+
+        MatchTeam completedTeamA = new MatchTeam();
+        completedTeamA.setMatch(completedMatch);
+        completedTeamA.setTeam(teamA);
+        completedTeamA.setSide(MatchTeamSide.TEAM_A);
+        matchTeamRepository.save(completedTeamA);
+
+        MatchTeam completedTeamB = new MatchTeam();
+        completedTeamB.setMatch(completedMatch);
+        completedTeamB.setTeam(teamB);
+        completedTeamB.setSide(MatchTeamSide.TEAM_B);
+        matchTeamRepository.save(completedTeamB);
+
+        createLineup(completedMatch, teamA, batter, 1);
+        createLineup(completedMatch, teamA, nonStriker, 2);
+        createLineup(completedMatch, teamB, bowler, 1);
+
+        StartInningsRequest completedRequest =
+                new StartInningsRequest();
+
+        completedRequest.setBattingTeamId(teamA.getId());
+        completedRequest.setBowlingTeamId(teamB.getId());
+        completedRequest.setInningsNumber(1);
+
+        inningsService.startInnings(
+                completedMatch.getId(),
+                completedRequest);
+
+        Innings completedInnings =
+                inningsRepository.findByMatchAndInningsNumber(
+                        completedMatch, 1)
+                        .orElseThrow();
+
+        createInningsState(
+                completedInnings,
+                batter,
+                bowler,
+                nonStriker);
+
+        deliveryService.recordDelivery(
+                completedInnings.getId(),
+                createDeliveryRequest(
+                        batter,
+                        nonStriker,
+                        bowler,
+                        4));
+
+        inningsService.declareInnings(
+                completedInnings.getId());
+
+		completedMatch.setStatus(MatchStatus.COMPLETED);
+				matchRepository.save(completedMatch);
+
+        Match liveMatch = new Match();
+        liveMatch.setName("Module 9 Filter Live " + testId);
+        liveMatch.setMatchNumber(2);
+        liveMatch.setFormat(MatchFormat.T20);
+        liveMatch.setTotalOvers(1);
+        liveMatch.setMaxPlayersPerTeam(2);
+        liveMatch.setScheduledAt(Instant.now());
+        liveMatch = matchRepository.save(liveMatch);
+
+        MatchTeam liveTeamA = new MatchTeam();
+        liveTeamA.setMatch(liveMatch);
+        liveTeamA.setTeam(teamA);
+        liveTeamA.setSide(MatchTeamSide.TEAM_A);
+        matchTeamRepository.save(liveTeamA);
+
+        MatchTeam liveTeamB = new MatchTeam();
+        liveTeamB.setMatch(liveMatch);
+        liveTeamB.setTeam(teamB);
+        liveTeamB.setSide(MatchTeamSide.TEAM_B);
+        matchTeamRepository.save(liveTeamB);
+
+        createLineup(liveMatch, teamA, batter, 1);
+        createLineup(liveMatch, teamA, nonStriker, 2);
+        createLineup(liveMatch, teamB, bowler, 1);
+
+        StartInningsRequest liveRequest =
+                new StartInningsRequest();
+
+        liveRequest.setBattingTeamId(teamA.getId());
+        liveRequest.setBowlingTeamId(teamB.getId());
+        liveRequest.setInningsNumber(1);
+
+        inningsService.startInnings(
+                liveMatch.getId(),
+                liveRequest);
+
+        Innings liveInnings =
+                inningsRepository.findByMatchAndInningsNumber(
+                        liveMatch, 1)
+                        .orElseThrow();
+
+        createInningsState(
+                liveInnings,
+                batter,
+                bowler,
+                nonStriker);
+
+        deliveryService.recordDelivery(
+                liveInnings.getId(),
+                createDeliveryRequest(
+                        batter,
+                        nonStriker,
+                        bowler,
+                        6));
+
+        Match savedLiveMatch =
+                matchRepository.findById(liveMatch.getId())
+                        .orElseThrow();
+
+        assertEquals(
+                MatchStatus.SCHEDULED,
+                savedLiveMatch.getStatus());
+
+        CareerStatsResponse stats =
+                careerStatisticsService.getCareerStats(
+                        batter.getId());
+
+        assertEquals(
+                1L,
+                stats.getBatting().getMatches());
+
+        assertEquals(
+                1L,
+                stats.getBatting().getInnings());
+
+        assertEquals(
+                4L,
+                stats.getBatting().getRuns());
+
+        assertEquals(
+                1L,
+                stats.getBatting().getFours());
+
+        assertEquals(
+                1L,
+                stats.getBatting().getBallsFaced());
+    }
+
+	@Test
+    void careerStatisticsShouldRejectUnknownPlayer() {
+
+        assertThrows(
+                ResourceNotFoundException.class,
+                () -> careerStatisticsService.getCareerStats(999999999L));
+    }
 
     @Test
     void scoringEngineShouldRecordLegalScoringDelivery() {

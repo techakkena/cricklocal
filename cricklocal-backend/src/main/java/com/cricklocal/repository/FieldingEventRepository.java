@@ -6,6 +6,8 @@ import com.cricklocal.entity.Innings;
 import com.cricklocal.entity.Player;
 import com.cricklocal.enums.WicketType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import com.cricklocal.enums.MatchStatus;
+import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
 
@@ -19,6 +21,21 @@ public interface FieldingEventRepository
             Player fielder);
 
     void deleteByDelivery(Delivery delivery);
+
+    @Query("""
+                select fe
+                from FieldingEvent fe
+                join fetch fe.innings i
+                join fetch fe.fielder f
+                join i.match m
+                where f = :player
+                and m.status = :status
+                order by fe.id asc
+                """)
+        List<FieldingEvent> findCareerFieldingByPlayer(
+                Player player,
+                MatchStatus status
+    );
 
     long countByFielderAndWicketType(
             Player fielder,
