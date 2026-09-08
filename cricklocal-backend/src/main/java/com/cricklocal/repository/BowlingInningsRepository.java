@@ -54,4 +54,18 @@ public interface BowlingInningsRepository
                 Player player,
                 MatchStatus status
     );
+
+    @Query("""
+                select bi.player.id,
+                       bi.player.displayName,
+                       sum(bi.wickets),
+                       sum(bi.runsConceded),
+                       sum(bi.ballsBowled),
+                       count(distinct bi.innings.match.id)
+                from BowlingInnings bi
+                where bi.innings.match.status = :status
+                group by bi.player.id, bi.player.displayName
+                order by sum(bi.wickets) desc
+                """)
+    List<Object[]> findTopWicketTakers(MatchStatus status);
 }

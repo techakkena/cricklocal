@@ -40,4 +40,18 @@ public interface FieldingEventRepository
     long countByFielderAndWicketType(
             Player fielder,
             WicketType wicketType);
+
+    @Query("""
+                select fe.fielder.id,
+                       fe.fielder.displayName,
+                       count(fe),
+                       sum(case when fe.wicketType = com.cricklocal.enums.WicketType.CAUGHT then 1 else 0 end),
+                       sum(case when fe.wicketType = com.cricklocal.enums.WicketType.RUN_OUT then 1 else 0 end),
+                       sum(case when fe.wicketType = com.cricklocal.enums.WicketType.STUMPED then 1 else 0 end)
+                from FieldingEvent fe
+                where fe.innings.match.status = :status
+                group by fe.fielder.id, fe.fielder.displayName
+                order by count(fe) desc
+                """)
+    List<Object[]> findTopFieldingPlayers(MatchStatus status);
 }

@@ -54,4 +54,17 @@ public interface BattingInningsRepository
                 Player player,
                 MatchStatus status
     );
+
+     @Query("""
+                select bi.player.id,
+                       bi.player.displayName,
+                       sum(bi.runs),
+                       sum(bi.ballsFaced),
+                       count(distinct bi.innings.match.id)
+                from BattingInnings bi
+                where bi.innings.match.status = :status
+                group by bi.player.id, bi.player.displayName
+                order by sum(bi.runs) desc
+                """)
+    List<Object[]> findTopRunScorers(MatchStatus status);
 }
