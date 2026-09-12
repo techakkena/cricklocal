@@ -1,41 +1,41 @@
 package com.cricklocal.controller;
 
 import com.cricklocal.dto.CreatePlayerRequest;
-import com.cricklocal.entity.Player;
-import com.cricklocal.repository.PlayerRepository;
+import com.cricklocal.dto.PlayerResponse;
+import com.cricklocal.service.PlayerService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/players")
 public class PlayerController {
 
-    private final PlayerRepository playerRepository;
+    private final PlayerService playerService;
 
-    public PlayerController(PlayerRepository playerRepository) {
-        this.playerRepository = playerRepository;
+    public PlayerController(PlayerService playerService) {
+        this.playerService = playerService;
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Player createPlayer(
+    public PlayerResponse createPlayer(
             @Valid @RequestBody CreatePlayerRequest request) {
 
-        Player player = new Player();
-
-        player.setFirstName(request.getFirstName());
-        player.setLastName(request.getLastName());
-        player.setDisplayName(request.getDisplayName());
-        player.setPhone(request.getPhone());
-        player.setBattingStyle(request.getBattingStyle());
-        player.setBowlingStyle(request.getBowlingStyle());
-        player.setRole(request.getRole());
-
-        return playerRepository.save(player);
+        return playerService.createPlayer(request);
     }
+
     @GetMapping
-    public java.util.List<Player> getAllPlayers() {
-        return playerRepository.findAll();
-}
+    public List<PlayerResponse> getAllPlayers() {
+        return playerService.getAllPlayers();
+    }
+
+    @GetMapping("/{playerId}")
+    public PlayerResponse getPlayerById(
+            @PathVariable Long playerId) {
+
+        return playerService.getPlayerById(playerId);
+    }
 }

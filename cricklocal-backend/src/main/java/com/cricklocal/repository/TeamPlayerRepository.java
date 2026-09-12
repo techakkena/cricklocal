@@ -18,4 +18,6 @@ public interface TeamPlayerRepository extends JpaRepository<TeamPlayer, Long> {
     );
 
     List<TeamPlayer> findByTeamAndActiveTrue(Team team);
+
+    List<TeamPlayer> findByPlayerAndActiveTrue(Player player);
 }

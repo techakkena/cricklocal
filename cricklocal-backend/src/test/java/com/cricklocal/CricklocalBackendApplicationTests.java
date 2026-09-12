@@ -11,6 +11,7 @@ import com.cricklocal.entity.Match;
 import com.cricklocal.entity.MatchLineup;
 import com.cricklocal.entity.Player;
 import com.cricklocal.entity.Team;
+import com.cricklocal.entity.TeamPlayer;
 import com.cricklocal.enums.ExtraType;
 import com.cricklocal.enums.WicketType;
 import com.cricklocal.enums.DismissalEnd;
@@ -18,6 +19,8 @@ import com.cricklocal.enums.InningsStatus;
 import com.cricklocal.enums.MatchTeamSide;
 import com.cricklocal.enums.MatchFormat;
 import com.cricklocal.enums.MatchStatus;
+import com.cricklocal.enums.BattingStyle;
+import com.cricklocal.enums.BowlingStyle;
 import com.cricklocal.repository.InningsRepository;
 import com.cricklocal.repository.MatchLineupRepository;
 import com.cricklocal.repository.MatchRepository;
@@ -26,6 +29,7 @@ import com.cricklocal.repository.PlayerRepository;
 import com.cricklocal.repository.TeamRepository;
 import com.cricklocal.repository.InningsStateRepository;
 import com.cricklocal.repository.MatchResultRepository;
+import com.cricklocal.repository.TeamPlayerRepository;
 import com.cricklocal.service.DeliveryService;
 import com.cricklocal.service.InningsService;
 import com.cricklocal.service.ScorecardService;
@@ -37,6 +41,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.http.MediaType;
 import com.cricklocal.enums.PlayerRole;
 import com.cricklocal.service.LeaderboardService;
 import com.cricklocal.exception.ResourceNotFoundException;
@@ -48,7 +54,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import org.springframework.transaction.annotation.Transactional;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @AutoConfigureMockMvc
 @SpringBootTest
@@ -78,6 +87,9 @@ class CricklocalBackendApplicationTests {
 
 	@Autowired
 	private InningsStateRepository inningsStateRepository;
+
+	@Autowired
+	private TeamPlayerRepository teamPlayerRepository;
 
     @Autowired
     private InningsService inningsService;
@@ -2843,6 +2855,122 @@ class CricklocalBackendApplicationTests {
                                     .value("Short name already exists"));
         }
     }
+
+	@Test
+	void createPlayerApiShouldReturnPlayerResponse() throws Exception {
+
+		String testId = String.valueOf(System.currentTimeMillis());
+
+		mockMvc.perform(
+						post("/api/players")
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("""
+										{
+										"firstName": "API",
+										"lastName": "Player",
+										"displayName": "API Player %s",
+										"phone": "9000000000",
+										"battingStyle": "RIGHT_HAND",
+										"bowlingStyle": "NONE",
+										"role": "BATTER"
+										}
+										""".formatted(testId)))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.id").exists())
+				.andExpect(jsonPath("$.firstName").value("API"))
+				.andExpect(jsonPath("$.lastName").value("Player"))
+				.andExpect(jsonPath("$.displayName").value("API Player " + testId))
+				.andExpect(jsonPath("$.phone").value("9000000000"))
+				.andExpect(jsonPath("$.battingStyle").value("RIGHT_HAND"))
+				.andExpect(jsonPath("$.bowlingStyle").value("NONE"))
+				.andExpect(jsonPath("$.role").value("BATTER"))
+				.andExpect(jsonPath("$.active").value(true))
+				.andExpect(jsonPath("$.createdAt").exists())
+				.andExpect(jsonPath("$.teams").isArray())
+				.andExpect(jsonPath("$.teams").isEmpty());
+	}
+
+	@Test
+	void getPlayersApiShouldReturnPlayerResponses() throws Exception {
+
+		String testId = String.valueOf(System.currentTimeMillis());
+
+		Player player = createPlayer(
+				"API",
+				"List " + testId,
+				"API List Player " + testId,
+				PlayerRole.BATTER);
+
+		mockMvc.perform(get("/api/players"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$").isArray())
+				.andExpect(jsonPath(
+						"$[?(@.id == %d)].displayName"
+								.formatted(player.getId()))
+						.value("API List Player " + testId));
+	}
+
+	@Test
+	void getPlayerByIdApiShouldReturnPlayerResponseWithTeamMembership() throws Exception {
+
+		String testId = String.valueOf(System.currentTimeMillis());
+
+		Team team = new Team();
+		team.setName("API Player Team " + testId);
+		team.setShortName("APT" + testId);
+		team.setCity("Nellore");
+		team = teamRepository.save(team);
+
+		Player player = new Player();
+		player.setFirstName("API");
+		player.setLastName("Member");
+		player.setDisplayName("API Member " + testId);
+		player.setPhone("9111111111");
+		player.setBattingStyle(BattingStyle.LEFT_HAND);
+		player.setBowlingStyle(BowlingStyle.LEFT_ARM_MEDIUM);
+		player.setRole(PlayerRole.ALL_ROUNDER);
+		player = playerRepository.save(player);
+
+		TeamPlayer teamPlayer = new TeamPlayer();
+		teamPlayer.setTeam(team);
+		teamPlayer.setPlayer(player);
+		teamPlayer.setJerseyNumber(27);
+		teamPlayer = teamPlayerRepository.save(teamPlayer);
+
+		mockMvc.perform(get("/api/players/" + player.getId()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.id").value(player.getId()))
+				.andExpect(jsonPath("$.displayName")
+						.value("API Member " + testId))
+				.andExpect(jsonPath("$.battingStyle")
+						.value("LEFT_HAND"))
+				.andExpect(jsonPath("$.bowlingStyle")
+						.value("LEFT_ARM_MEDIUM"))
+				.andExpect(jsonPath("$.role")
+						.value("ALL_ROUNDER"))
+				.andExpect(jsonPath("$.teams.length()").value(1))
+				.andExpect(jsonPath("$.teams[0].teamId")
+						.value(team.getId()))
+				.andExpect(jsonPath("$.teams[0].teamName")
+						.value("API Player Team " + testId))
+				.andExpect(jsonPath("$.teams[0].shortName")
+						.value("APT" + testId))
+				.andExpect(jsonPath("$.teams[0].jerseyNumber")
+						.value(27))
+				.andExpect(jsonPath("$.teams[0].joinedAt").exists())
+				.andExpect(jsonPath("$.teams[0].leftAt").doesNotExist());
+	}
+
+	@Test
+	void getUnknownPlayerApiShouldReturnNotFound() throws Exception {
+
+		mockMvc.perform(get("/api/players/999999999"))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.status").value(404))
+				.andExpect(jsonPath("$.message")
+						.value("Player not found: 999999999"))
+				.andExpect(jsonPath("$.timestamp").exists());
+	}
 
 	private void createInningsState(
 				Innings innings,
