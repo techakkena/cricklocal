@@ -87,3 +87,12 @@ export interface ScorecardResponse {
   innings: InningsScorecardResponse[];
   result: MatchResultResponse | null;
 }
+
+export interface TeamResponse {
+  id: number;
+  name: string;
+  shortName: string;
+  city: string | null;
+  active: boolean;
+  createdAt: string;
+}

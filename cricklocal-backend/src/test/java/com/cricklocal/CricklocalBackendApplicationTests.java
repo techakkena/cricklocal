@@ -2364,6 +2364,486 @@ class CricklocalBackendApplicationTests {
 					response.getTimestamp() != null);
 	}
 
+	@Test
+    void teamExcelImportShouldNotPartiallyCreateTeamsWhenValidationFails()
+            throws Exception {
+
+        String testId = String.valueOf(System.currentTimeMillis());
+
+        String validTeamName = "Atomic Import Team " + testId;
+        String validShortName = "AI" + testId;
+
+        long initialTeamCount = teamRepository.count();
+
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook =
+                     new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+
+            org.apache.poi.ss.usermodel.Sheet sheet =
+                    workbook.createSheet("Teams");
+
+            org.apache.poi.ss.usermodel.Row header =
+                    sheet.createRow(0);
+
+            header.createCell(0).setCellValue("Team Name");
+            header.createCell(1).setCellValue("Short Name");
+            header.createCell(2).setCellValue("City");
+
+            org.apache.poi.ss.usermodel.Row validRow =
+                    sheet.createRow(1);
+
+            validRow.createCell(0).setCellValue(validTeamName);
+            validRow.createCell(1).setCellValue(validShortName);
+            validRow.createCell(2).setCellValue("Hyderabad");
+
+            org.apache.poi.ss.usermodel.Row invalidRow =
+                    sheet.createRow(2);
+
+            invalidRow.createCell(0).setCellValue("Invalid Import Team " + testId);
+            invalidRow.createCell(1).setCellValue("");
+            invalidRow.createCell(2).setCellValue("Vijayawada");
+
+            java.io.ByteArrayOutputStream outputStream =
+                    new java.io.ByteArrayOutputStream();
+
+            workbook.write(outputStream);
+
+            mockMvc.perform(
+                            org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                    .multipart("/api/teams/import")
+                                    .file(
+                                            new org.springframework.mock.web.MockMultipartFile(
+                                                    "file",
+                                                    "atomic-import.xlsx",
+                                                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                                    outputStream.toByteArray())))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .status()
+                                    .isOk())
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.totalRows")
+                                    .value(2))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.createdRows")
+                                    .value(0))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.errors.length()")
+                                    .value(1))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.errors[0].rowNumber")
+                                    .value(3))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.errors[0].message")
+                                    .value("Short name is required"));
+        }
+
+        assertEquals(
+                initialTeamCount,
+                teamRepository.count());
+
+        assertFalse(
+                teamRepository.existsByName(validTeamName));
+
+        assertFalse(
+                teamRepository.existsByShortName(validShortName));
+    }
+
+	@Test
+    void teamExcelImportShouldCreateValidTeams()
+            throws Exception {
+
+        String testId = String.valueOf(System.currentTimeMillis());
+
+        String teamOneName = "Import Team One " + testId;
+        String teamOneShortName = "I1" + testId;
+
+        String teamTwoName = "Import Team Two " + testId;
+        String teamTwoShortName = "I2" + testId;
+
+        long initialTeamCount = teamRepository.count();
+
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook =
+                     new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+
+            org.apache.poi.ss.usermodel.Sheet sheet =
+                    workbook.createSheet("Teams");
+
+            org.apache.poi.ss.usermodel.Row header =
+                    sheet.createRow(0);
+
+            header.createCell(0).setCellValue("Team Name");
+            header.createCell(1).setCellValue("Short Name");
+            header.createCell(2).setCellValue("City");
+
+            org.apache.poi.ss.usermodel.Row firstTeam =
+                    sheet.createRow(1);
+
+            firstTeam.createCell(0).setCellValue(teamOneName);
+            firstTeam.createCell(1).setCellValue(teamOneShortName);
+            firstTeam.createCell(2).setCellValue("Hyderabad");
+
+            org.apache.poi.ss.usermodel.Row secondTeam =
+                    sheet.createRow(2);
+
+            secondTeam.createCell(0).setCellValue(teamTwoName);
+            secondTeam.createCell(1).setCellValue(teamTwoShortName);
+            secondTeam.createCell(2).setCellValue("Vijayawada");
+
+            java.io.ByteArrayOutputStream outputStream =
+                    new java.io.ByteArrayOutputStream();
+
+            workbook.write(outputStream);
+
+            mockMvc.perform(
+                            org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                    .multipart("/api/teams/import")
+                                    .file(
+                                            new org.springframework.mock.web.MockMultipartFile(
+                                                    "file",
+                                                    "teams-import.xlsx",
+                                                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                                    outputStream.toByteArray())))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .status()
+                                    .isOk())
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.totalRows")
+                                    .value(2))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.createdRows")
+                                    .value(2))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.errors")
+                                    .isEmpty());
+        }
+
+        assertEquals(
+                initialTeamCount + 2,
+                teamRepository.count());
+
+        assertTrue(
+                teamRepository.existsByName(teamOneName));
+
+        assertTrue(
+                teamRepository.existsByShortName(teamOneShortName));
+
+        assertTrue(
+                teamRepository.existsByName(teamTwoName));
+
+        assertTrue(
+                teamRepository.existsByShortName(teamTwoShortName));
+    }
+
+	@Test
+	void teamExcelValidationShouldAcceptValidWorkbookWithoutCreatingTeams()
+			throws Exception {
+
+		long initialTeamCount = teamRepository.count();
+
+		try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook =
+					new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+
+			org.apache.poi.ss.usermodel.Sheet sheet =
+					workbook.createSheet("Teams");
+
+			org.apache.poi.ss.usermodel.Row header =
+					sheet.createRow(0);
+
+			header.createCell(0).setCellValue("Team Name");
+			header.createCell(1).setCellValue("Short Name");
+			header.createCell(2).setCellValue("City");
+
+			org.apache.poi.ss.usermodel.Row firstTeam =
+					sheet.createRow(1);
+
+			firstTeam.createCell(0).setCellValue("CMR WARRIORS");
+			firstTeam.createCell(1).setCellValue("WAR");
+			firstTeam.createCell(2).setCellValue("Hyderabad");
+
+			org.apache.poi.ss.usermodel.Row secondTeam =
+					sheet.createRow(2);
+
+			secondTeam.createCell(0).setCellValue("CMR TITANS");
+			secondTeam.createCell(1).setCellValue("TIT");
+			secondTeam.createCell(2).setCellValue("Vijayawada");
+
+			java.io.ByteArrayOutputStream outputStream =
+					new java.io.ByteArrayOutputStream();
+
+			workbook.write(outputStream);
+
+			mockMvc.perform(
+							org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+									.multipart("/api/teams/import/validate")
+									.file(
+											new org.springframework.mock.web.MockMultipartFile(
+													"file",
+													"teams.xlsx",
+													"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+													outputStream.toByteArray())))
+					.andExpect(
+							org.springframework.test.web.servlet.result.MockMvcResultMatchers
+									.status()
+									.isOk())
+					.andExpect(
+							org.springframework.test.web.servlet.result.MockMvcResultMatchers
+									.jsonPath("$.totalRows")
+									.value(2))
+					.andExpect(
+							org.springframework.test.web.servlet.result.MockMvcResultMatchers
+									.jsonPath("$.createdRows")
+									.value(0))
+					.andExpect(
+							org.springframework.test.web.servlet.result.MockMvcResultMatchers
+									.jsonPath("$.errors")
+									.isEmpty());
+		}
+
+		assertEquals(
+				initialTeamCount,
+				teamRepository.count());
+	}
+
+	@Test
+    void teamExcelValidationShouldRejectInvalidHeaders()
+				throws Exception {
+
+			try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook =
+						new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+
+				org.apache.poi.ss.usermodel.Sheet sheet =
+						workbook.createSheet("Teams");
+
+				org.apache.poi.ss.usermodel.Row header =
+						sheet.createRow(0);
+
+				header.createCell(0).setCellValue("Name");
+				header.createCell(1).setCellValue("Code");
+				header.createCell(2).setCellValue("Location");
+
+				java.io.ByteArrayOutputStream outputStream =
+						new java.io.ByteArrayOutputStream();
+
+				workbook.write(outputStream);
+
+				mockMvc.perform(
+								org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+										.multipart("/api/teams/import/validate")
+										.file(
+												new org.springframework.mock.web.MockMultipartFile(
+														"file",
+														"invalid-headers.xlsx",
+														"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+														outputStream.toByteArray())))
+						.andExpect(
+								org.springframework.test.web.servlet.result.MockMvcResultMatchers
+										.status()
+										.isBadRequest())
+						.andExpect(
+								org.springframework.test.web.servlet.result.MockMvcResultMatchers
+										.jsonPath("$.status")
+										.value(400))
+						.andExpect(
+								org.springframework.test.web.servlet.result.MockMvcResultMatchers
+										.jsonPath("$.message")
+										.value(
+												"Invalid Excel headers. Expected: Team Name, Short Name, City"))
+						.andExpect(
+								org.springframework.test.web.servlet.result.MockMvcResultMatchers
+										.jsonPath("$.timestamp")
+										.exists());
+			}
+    }
+
+	@Test
+    void teamExcelValidationShouldReportRowLevelErrors()
+            throws Exception {
+
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook =
+                     new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+
+            org.apache.poi.ss.usermodel.Sheet sheet =
+                    workbook.createSheet("Teams");
+
+            org.apache.poi.ss.usermodel.Row header =
+                    sheet.createRow(0);
+
+            header.createCell(0).setCellValue("Team Name");
+            header.createCell(1).setCellValue("Short Name");
+            header.createCell(2).setCellValue("City");
+
+            org.apache.poi.ss.usermodel.Row firstBadRow =
+                    sheet.createRow(1);
+
+            firstBadRow.createCell(0).setCellValue("");
+            firstBadRow.createCell(1).setCellValue("BAD1");
+            firstBadRow.createCell(2).setCellValue("Hyderabad");
+
+            org.apache.poi.ss.usermodel.Row secondBadRow =
+                    sheet.createRow(2);
+
+            secondBadRow.createCell(0).setCellValue("Valid Team Name");
+            secondBadRow.createCell(1).setCellValue("");
+            secondBadRow.createCell(2).setCellValue("Vijayawada");
+
+            java.io.ByteArrayOutputStream outputStream =
+                    new java.io.ByteArrayOutputStream();
+
+            workbook.write(outputStream);
+
+            mockMvc.perform(
+                            org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                    .multipart("/api/teams/import/validate")
+                                    .file(
+                                            new org.springframework.mock.web.MockMultipartFile(
+                                                    "file",
+                                                    "row-errors.xlsx",
+                                                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                                    outputStream.toByteArray())))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .status()
+                                    .isOk())
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.totalRows")
+                                    .value(2))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.createdRows")
+                                    .value(0))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.errors.length()").value(2))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.errors[0].rowNumber")
+                                    .value(2))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.errors[0].message")
+                                    .value("Team name is required"))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.errors[1].rowNumber")
+                                    .value(3))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.errors[1].message")
+                                    .value("Short name is required"));
+        }
+    }
+
+	@Test
+    void teamExcelValidationShouldRejectDuplicateNamesAndShortNames()
+            throws Exception {
+
+        String testId = String.valueOf(System.currentTimeMillis());
+
+        Team existingTeam = new Team();
+        existingTeam.setName("Existing Team " + testId);
+        existingTeam.setShortName("EXT" + testId);
+        existingTeam.setCity("Hyderabad");
+        existingTeam = teamRepository.save(existingTeam);
+
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook =
+                     new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+
+            org.apache.poi.ss.usermodel.Sheet sheet =
+                    workbook.createSheet("Teams");
+
+            org.apache.poi.ss.usermodel.Row header =
+                    sheet.createRow(0);
+
+            header.createCell(0).setCellValue("Team Name");
+            header.createCell(1).setCellValue("Short Name");
+            header.createCell(2).setCellValue("City");
+
+            org.apache.poi.ss.usermodel.Row firstRow =
+                    sheet.createRow(1);
+
+            firstRow.createCell(0).setCellValue(existingTeam.getName());
+            firstRow.createCell(1).setCellValue("NEW" + testId);
+            firstRow.createCell(2).setCellValue("Vijayawada");
+
+            org.apache.poi.ss.usermodel.Row secondRow =
+                    sheet.createRow(2);
+
+            secondRow.createCell(0).setCellValue("New Team " + testId);
+            secondRow.createCell(1).setCellValue(existingTeam.getShortName());
+            secondRow.createCell(2).setCellValue("Nellore");
+
+            org.apache.poi.ss.usermodel.Row thirdRow =
+                    sheet.createRow(3);
+
+            thirdRow.createCell(0).setCellValue("Workbook Duplicate " + testId);
+            thirdRow.createCell(1).setCellValue("DUP" + testId);
+            thirdRow.createCell(2).setCellValue("Guntur");
+
+            org.apache.poi.ss.usermodel.Row fourthRow =
+                    sheet.createRow(4);
+
+            fourthRow.createCell(0).setCellValue("Workbook Duplicate " + testId);
+            fourthRow.createCell(1).setCellValue("DUP2" + testId);
+            fourthRow.createCell(2).setCellValue("Guntur");
+
+            java.io.ByteArrayOutputStream outputStream =
+                    new java.io.ByteArrayOutputStream();
+
+            workbook.write(outputStream);
+
+            mockMvc.perform(
+                            org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                    .multipart("/api/teams/import/validate")
+                                    .file(
+                                            new org.springframework.mock.web.MockMultipartFile(
+                                                    "file",
+                                                    "duplicate-teams.xlsx",
+                                                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                                    outputStream.toByteArray())))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .status()
+                                    .isOk())
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.totalRows")
+                                    .value(4))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.createdRows")
+                                    .value(0))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.errors.length()").value(3))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.errors[0].rowNumber")
+                                    .value(2))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.errors[0].message")
+                                    .value("Team name already exists"))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.errors[1].rowNumber")
+                                    .value(3))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.errors[1].message")
+                                    .value("Short name already exists"));
+        }
+    }
+
 	private void createInningsState(
 				Innings innings,
 				Player striker,
