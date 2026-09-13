@@ -6,6 +6,7 @@ import SignUp from "./pages/AuthPages/SignUp";
 import NotFound from "./pages/OtherPage/NotFound";
 import Home from "./pages/Dashboard/Home";
 import Teams from "./pages/Teams";
+import Players from "./pages/Players";
 import PlaceholderPage from "./pages/PlaceholderPage";
 
 export default function App() {
@@ -19,15 +20,7 @@ export default function App() {
 
           {/* Manage */}
           <Route path="/teams" element={<Teams />} />
-          <Route
-            path="/players"
-            element={
-              <PlaceholderPage
-                title="Players"
-                description="Manage CricketLocal players and player profiles."
-              />
-            }
-          />
+          <Route path="/players" element={<Players />} />
           <Route
             path="/series"
             element={

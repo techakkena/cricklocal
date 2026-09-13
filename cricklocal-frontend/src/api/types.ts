@@ -96,3 +96,45 @@ export interface TeamResponse {
   active: boolean;
   createdAt: string;
 }
+
+export type PlayerRole =
+  | "BATTER"
+  | "BOWLER"
+  | "ALL_ROUNDER"
+  | "WICKET_KEEPER";
+
+export type BattingStyle = "RIGHT_HAND" | "LEFT_HAND";
+
+export type BowlingStyle =
+  | "RIGHT_ARM_FAST"
+  | "RIGHT_ARM_MEDIUM"
+  | "RIGHT_ARM_OFF_SPIN"
+  | "RIGHT_ARM_LEG_SPIN"
+  | "LEFT_ARM_FAST"
+  | "LEFT_ARM_MEDIUM"
+  | "LEFT_ARM_ORTHODOX"
+  | "LEFT_ARM_WRIST_SPIN"
+  | "NONE";
+
+export interface PlayerTeamResponse {
+  teamId: number;
+  teamName: string;
+  shortName: string;
+  jerseyNumber: number | null;
+  joinedAt: string | null;
+  leftAt: string | null;
+}
+
+export interface PlayerResponse {
+  id: number;
+  firstName: string;
+  lastName: string | null;
+  displayName: string;
+  phone: string | null;
+  battingStyle: BattingStyle;
+  bowlingStyle: BowlingStyle;
+  role: PlayerRole;
+  active: boolean;
+  createdAt: string;
+  teams: PlayerTeamResponse[];
+}

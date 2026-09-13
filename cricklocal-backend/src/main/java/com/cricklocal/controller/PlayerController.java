@@ -1,11 +1,14 @@
 package com.cricklocal.controller;
 
 import com.cricklocal.dto.CreatePlayerRequest;
+import com.cricklocal.dto.PlayerImportResponse;
 import com.cricklocal.dto.PlayerResponse;
+import com.cricklocal.service.PlayerImportService;
 import com.cricklocal.service.PlayerService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -14,9 +17,14 @@ import java.util.List;
 public class PlayerController {
 
     private final PlayerService playerService;
+    private final PlayerImportService playerImportService;
 
-    public PlayerController(PlayerService playerService) {
+    public PlayerController(
+            PlayerService playerService,
+            PlayerImportService playerImportService) {
+
         this.playerService = playerService;
+        this.playerImportService = playerImportService;
     }
 
     @PostMapping
@@ -37,5 +45,19 @@ public class PlayerController {
             @PathVariable Long playerId) {
 
         return playerService.getPlayerById(playerId);
+    }
+
+    @PostMapping("/import/validate")
+    public PlayerImportResponse validatePlayerImport(
+            @RequestParam("file") MultipartFile file) {
+
+        return playerImportService.validateExcel(file);
+    }
+
+    @PostMapping("/import")
+    public PlayerImportResponse importPlayers(
+            @RequestParam("file") MultipartFile file) {
+
+        return playerImportService.importExcel(file);
     }
 }

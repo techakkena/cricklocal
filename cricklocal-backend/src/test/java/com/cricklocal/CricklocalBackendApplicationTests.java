@@ -2972,6 +2972,622 @@ class CricklocalBackendApplicationTests {
 				.andExpect(jsonPath("$.timestamp").exists());
 	}
 
+	@Test
+    void playerExcelImportShouldCreateValidPlayers() throws Exception {
+
+        String testId = String.valueOf(System.currentTimeMillis());
+
+        String playerOneName = "Excel Player One " + testId;
+        String playerTwoName = "Excel Player Two " + testId;
+
+        long initialPlayerCount = playerRepository.count();
+
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook =
+                     new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+
+            org.apache.poi.ss.usermodel.Sheet sheet =
+                    workbook.createSheet("Players");
+
+            org.apache.poi.ss.usermodel.Row header =
+                    sheet.createRow(0);
+
+            header.createCell(0).setCellValue("First Name");
+            header.createCell(1).setCellValue("Last Name");
+            header.createCell(2).setCellValue("Display Name");
+            header.createCell(3).setCellValue("Phone");
+            header.createCell(4).setCellValue("Batting Style");
+            header.createCell(5).setCellValue("Bowling Style");
+            header.createCell(6).setCellValue("Role");
+
+            org.apache.poi.ss.usermodel.Row rowOne =
+                    sheet.createRow(1);
+
+            rowOne.createCell(0).setCellValue("Excel");
+            rowOne.createCell(1).setCellValue("One");
+            rowOne.createCell(2).setCellValue(playerOneName);
+            rowOne.createCell(3).setCellValue("9000000001");
+            rowOne.createCell(4).setCellValue("RIGHT_HAND");
+            rowOne.createCell(5).setCellValue("NONE");
+            rowOne.createCell(6).setCellValue("BATTER");
+
+            org.apache.poi.ss.usermodel.Row rowTwo =
+                    sheet.createRow(2);
+
+            rowTwo.createCell(0).setCellValue("Excel");
+            rowTwo.createCell(1).setCellValue("Two");
+            rowTwo.createCell(2).setCellValue(playerTwoName);
+            rowTwo.createCell(3).setCellValue("9000000002");
+            rowTwo.createCell(4).setCellValue("LEFT_HAND");
+            rowTwo.createCell(5).setCellValue("RIGHT_ARM_FAST");
+            rowTwo.createCell(6).setCellValue("ALL_ROUNDER");
+
+            java.io.ByteArrayOutputStream outputStream =
+                    new java.io.ByteArrayOutputStream();
+
+            workbook.write(outputStream);
+
+            mockMvc.perform(
+                    org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                            .multipart("/api/players/import")
+                            .file(
+                                    new org.springframework.mock.web.MockMultipartFile(
+                                            "file",
+                                            "players-import.xlsx",
+                                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                            outputStream.toByteArray())))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .status().isOk())
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.totalRows").value(2))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.createdRows").value(2));
+
+            assertEquals(
+                    initialPlayerCount + 2,
+                    playerRepository.count());
+
+            assertTrue(
+                    playerRepository.existsByDisplayName(playerOneName));
+
+            assertTrue(
+                    playerRepository.existsByDisplayName(playerTwoName));
+        }
+    }
+
+    @Test
+    void playerExcelValidationShouldNotCreatePlayers() throws Exception {
+
+        String testId = String.valueOf(System.currentTimeMillis());
+
+        String playerName = "Validation Player " + testId;
+
+        long initialPlayerCount = playerRepository.count();
+
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook =
+                     new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+
+            org.apache.poi.ss.usermodel.Sheet sheet =
+                    workbook.createSheet("Players");
+
+            org.apache.poi.ss.usermodel.Row header =
+                    sheet.createRow(0);
+
+            header.createCell(0).setCellValue("First Name");
+            header.createCell(1).setCellValue("Last Name");
+            header.createCell(2).setCellValue("Display Name");
+            header.createCell(3).setCellValue("Phone");
+            header.createCell(4).setCellValue("Batting Style");
+            header.createCell(5).setCellValue("Bowling Style");
+            header.createCell(6).setCellValue("Role");
+
+            org.apache.poi.ss.usermodel.Row row =
+                    sheet.createRow(1);
+
+            row.createCell(0).setCellValue("Validation");
+            row.createCell(1).setCellValue("Player");
+            row.createCell(2).setCellValue(playerName);
+            row.createCell(3).setCellValue("9000000010");
+            row.createCell(4).setCellValue("RIGHT_HAND");
+            row.createCell(5).setCellValue("NONE");
+            row.createCell(6).setCellValue("BATTER");
+
+            java.io.ByteArrayOutputStream outputStream =
+                    new java.io.ByteArrayOutputStream();
+
+            workbook.write(outputStream);
+
+            mockMvc.perform(
+                    org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                            .multipart("/api/players/import/validate")
+                            .file(
+                                    new org.springframework.mock.web.MockMultipartFile(
+                                            "file",
+                                            "players-validation.xlsx",
+                                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                            outputStream.toByteArray())))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .status().isOk())
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.totalRows").value(1))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.createdRows").value(0));
+
+            assertEquals(
+                    initialPlayerCount,
+                    playerRepository.count());
+
+            assertFalse(
+                    playerRepository.existsByDisplayName(playerName));
+        }
+    }
+
+    @Test
+    void playerExcelValidationShouldRejectInvalidHeaders() throws Exception {
+
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook =
+                     new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+
+            org.apache.poi.ss.usermodel.Sheet sheet =
+                    workbook.createSheet("Players");
+
+            org.apache.poi.ss.usermodel.Row header =
+                    sheet.createRow(0);
+
+            header.createCell(0).setCellValue("Name");
+            header.createCell(1).setCellValue("Surname");
+            header.createCell(2).setCellValue("Player");
+            header.createCell(3).setCellValue("Mobile");
+            header.createCell(4).setCellValue("Batting");
+            header.createCell(5).setCellValue("Bowling");
+            header.createCell(6).setCellValue("Type");
+
+            java.io.ByteArrayOutputStream outputStream =
+                    new java.io.ByteArrayOutputStream();
+
+            workbook.write(outputStream);
+
+            mockMvc.perform(
+                    org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                            .multipart("/api/players/import/validate")
+                            .file(
+                                    new org.springframework.mock.web.MockMultipartFile(
+                                            "file",
+                                            "invalid-player-headers.xlsx",
+                                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                            outputStream.toByteArray())))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .status().isBadRequest())
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.status").value(400))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.message")
+                                    .value(
+                                            "Invalid Excel headers. Expected: First Name, Last Name, Display Name, Phone, Batting Style, Bowling Style, Role"));
+        }
+    }
+
+    @Test
+    void playerExcelValidationShouldRejectDuplicateDisplayNames() throws Exception {
+
+        String testId = String.valueOf(System.currentTimeMillis());
+
+        String existingName = "Existing Excel Player " + testId;
+
+        Player existingPlayer = new Player();
+
+        existingPlayer.setFirstName("Existing");
+        existingPlayer.setLastName("Player");
+        existingPlayer.setDisplayName(existingName);
+        existingPlayer.setPhone("9000000020");
+        existingPlayer.setBattingStyle(BattingStyle.RIGHT_HAND);
+        existingPlayer.setBowlingStyle(BowlingStyle.NONE);
+        existingPlayer.setRole(PlayerRole.BATTER);
+
+        playerRepository.save(existingPlayer);
+
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook =
+                     new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+
+            org.apache.poi.ss.usermodel.Sheet sheet =
+                    workbook.createSheet("Players");
+
+            org.apache.poi.ss.usermodel.Row header =
+                    sheet.createRow(0);
+
+            header.createCell(0).setCellValue("First Name");
+            header.createCell(1).setCellValue("Last Name");
+            header.createCell(2).setCellValue("Display Name");
+            header.createCell(3).setCellValue("Phone");
+            header.createCell(4).setCellValue("Batting Style");
+            header.createCell(5).setCellValue("Bowling Style");
+            header.createCell(6).setCellValue("Role");
+
+            org.apache.poi.ss.usermodel.Row row =
+                    sheet.createRow(1);
+
+            row.createCell(0).setCellValue("Duplicate");
+            row.createCell(1).setCellValue("Player");
+            row.createCell(2).setCellValue(existingName);
+            row.createCell(3).setCellValue("9000000021");
+            row.createCell(4).setCellValue("RIGHT_HAND");
+            row.createCell(5).setCellValue("NONE");
+            row.createCell(6).setCellValue("BATTER");
+
+            java.io.ByteArrayOutputStream outputStream =
+                    new java.io.ByteArrayOutputStream();
+
+            workbook.write(outputStream);
+
+            mockMvc.perform(
+                    org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                            .multipart("/api/players/import/validate")
+                            .file(
+                                    new org.springframework.mock.web.MockMultipartFile(
+                                            "file",
+                                            "duplicate-player.xlsx",
+                                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                            outputStream.toByteArray())))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .status().isOk())
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.totalRows").value(1))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.createdRows").value(0))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.errors[0].message")
+                                    .value("Display name already exists"));
+        }
+    }
+
+    @Test
+    void playerExcelValidationShouldRejectDuplicateDisplayNamesWithinWorkbook() throws Exception {
+
+        String testId = String.valueOf(System.currentTimeMillis());
+        String duplicateName = "Workbook Duplicate " + testId;
+
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook =
+                     new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+
+            org.apache.poi.ss.usermodel.Sheet sheet =
+                    workbook.createSheet("Players");
+
+            org.apache.poi.ss.usermodel.Row header = sheet.createRow(0);
+
+            header.createCell(0).setCellValue("First Name");
+            header.createCell(1).setCellValue("Last Name");
+            header.createCell(2).setCellValue("Display Name");
+            header.createCell(3).setCellValue("Phone");
+            header.createCell(4).setCellValue("Batting Style");
+            header.createCell(5).setCellValue("Bowling Style");
+            header.createCell(6).setCellValue("Role");
+
+            for (int rowNumber = 1; rowNumber <= 2; rowNumber++) {
+                org.apache.poi.ss.usermodel.Row row =
+                        sheet.createRow(rowNumber);
+
+                row.createCell(0).setCellValue("Workbook");
+                row.createCell(1).setCellValue("Player" + rowNumber);
+                row.createCell(2).setCellValue(duplicateName);
+                row.createCell(3).setCellValue("900000003" + rowNumber);
+                row.createCell(4).setCellValue("RIGHT_HAND");
+                row.createCell(5).setCellValue("NONE");
+                row.createCell(6).setCellValue("BATTER");
+            }
+
+            java.io.ByteArrayOutputStream outputStream =
+                    new java.io.ByteArrayOutputStream();
+
+            workbook.write(outputStream);
+
+            mockMvc.perform(
+                    org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                            .multipart("/api/players/import/validate")
+                            .file(
+                                    new org.springframework.mock.web.MockMultipartFile(
+                                            "file",
+                                            "workbook-duplicates.xlsx",
+                                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                            outputStream.toByteArray())))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .status().isOk())
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.totalRows").value(2))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.createdRows").value(0))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.errors[0].message")
+                                    .value("Duplicate display name in Excel file"));
+        }
+    }
+
+    @Test
+    void playerExcelValidationShouldRejectInvalidRole() throws Exception {
+
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook =
+                     new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+
+            org.apache.poi.ss.usermodel.Sheet sheet =
+                    workbook.createSheet("Players");
+
+            org.apache.poi.ss.usermodel.Row header = sheet.createRow(0);
+
+            header.createCell(0).setCellValue("First Name");
+            header.createCell(1).setCellValue("Last Name");
+            header.createCell(2).setCellValue("Display Name");
+            header.createCell(3).setCellValue("Phone");
+            header.createCell(4).setCellValue("Batting Style");
+            header.createCell(5).setCellValue("Bowling Style");
+            header.createCell(6).setCellValue("Role");
+
+            org.apache.poi.ss.usermodel.Row row = sheet.createRow(1);
+
+            row.createCell(0).setCellValue("Invalid");
+            row.createCell(1).setCellValue("Role");
+            row.createCell(2).setCellValue(
+                    "Invalid Role " + System.currentTimeMillis());
+            row.createCell(3).setCellValue("9000000041");
+            row.createCell(4).setCellValue("RIGHT_HAND");
+            row.createCell(5).setCellValue("NONE");
+            row.createCell(6).setCellValue("INVALID_ROLE");
+
+            java.io.ByteArrayOutputStream outputStream =
+                    new java.io.ByteArrayOutputStream();
+
+            workbook.write(outputStream);
+
+            mockMvc.perform(
+                    org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                            .multipart("/api/players/import/validate")
+                            .file(
+                                    new org.springframework.mock.web.MockMultipartFile(
+                                            "file",
+                                            "invalid-role.xlsx",
+                                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                            outputStream.toByteArray())))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .status().isOk())
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.errors[0].message")
+                                    .value(
+                                            "Invalid role. Expected: BATTER, BOWLER, ALL_ROUNDER, WICKET_KEEPER"));
+        }
+    }
+
+    @Test
+    void playerExcelValidationShouldRejectInvalidBattingStyle() throws Exception {
+
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook =
+                     new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+
+            org.apache.poi.ss.usermodel.Sheet sheet =
+                    workbook.createSheet("Players");
+
+            org.apache.poi.ss.usermodel.Row header = sheet.createRow(0);
+
+            header.createCell(0).setCellValue("First Name");
+            header.createCell(1).setCellValue("Last Name");
+            header.createCell(2).setCellValue("Display Name");
+            header.createCell(3).setCellValue("Phone");
+            header.createCell(4).setCellValue("Batting Style");
+            header.createCell(5).setCellValue("Bowling Style");
+            header.createCell(6).setCellValue("Role");
+
+            org.apache.poi.ss.usermodel.Row row = sheet.createRow(1);
+
+            row.createCell(0).setCellValue("Invalid");
+            row.createCell(1).setCellValue("Batting");
+            row.createCell(2).setCellValue(
+                    "Invalid Batting " + System.currentTimeMillis());
+            row.createCell(3).setCellValue("9000000051");
+            row.createCell(4).setCellValue("INVALID_BATTING");
+            row.createCell(5).setCellValue("NONE");
+            row.createCell(6).setCellValue("BATTER");
+
+            java.io.ByteArrayOutputStream outputStream =
+                    new java.io.ByteArrayOutputStream();
+
+            workbook.write(outputStream);
+
+            mockMvc.perform(
+                    org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                            .multipart("/api/players/import/validate")
+                            .file(
+                                    new org.springframework.mock.web.MockMultipartFile(
+                                            "file",
+                                            "invalid-batting.xlsx",
+                                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                            outputStream.toByteArray())))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .status().isOk())
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.errors[0].message")
+                                    .value(
+                                            "Invalid batting style. Expected: RIGHT_HAND, LEFT_HAND"));
+        }
+    }
+
+    @Test
+    void playerExcelValidationShouldRejectInvalidBowlingStyle() throws Exception {
+
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook =
+                     new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+
+            org.apache.poi.ss.usermodel.Sheet sheet =
+                    workbook.createSheet("Players");
+
+            org.apache.poi.ss.usermodel.Row header = sheet.createRow(0);
+
+            header.createCell(0).setCellValue("First Name");
+            header.createCell(1).setCellValue("Last Name");
+            header.createCell(2).setCellValue("Display Name");
+            header.createCell(3).setCellValue("Phone");
+            header.createCell(4).setCellValue("Batting Style");
+            header.createCell(5).setCellValue("Bowling Style");
+            header.createCell(6).setCellValue("Role");
+
+            org.apache.poi.ss.usermodel.Row row = sheet.createRow(1);
+
+            row.createCell(0).setCellValue("Invalid");
+            row.createCell(1).setCellValue("Bowling");
+            row.createCell(2).setCellValue(
+                    "Invalid Bowling " + System.currentTimeMillis());
+            row.createCell(3).setCellValue("9000000061");
+            row.createCell(4).setCellValue("RIGHT_HAND");
+            row.createCell(5).setCellValue("INVALID_BOWLING");
+            row.createCell(6).setCellValue("BOWLER");
+
+            java.io.ByteArrayOutputStream outputStream =
+                    new java.io.ByteArrayOutputStream();
+
+            workbook.write(outputStream);
+
+            mockMvc.perform(
+                    org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                            .multipart("/api/players/import/validate")
+                            .file(
+                                    new org.springframework.mock.web.MockMultipartFile(
+                                            "file",
+                                            "invalid-bowling.xlsx",
+                                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                            outputStream.toByteArray())))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .status().isOk())
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.errors[0].message")
+                                    .value("Invalid bowling style"));
+        }
+    }
+
+    @Test
+    void playerExcelValidationShouldRejectUnsupportedFileExtension() throws Exception {
+
+        org.springframework.mock.web.MockMultipartFile file =
+                new org.springframework.mock.web.MockMultipartFile(
+                        "file",
+                        "players.csv",
+                        "text/csv",
+                        "First Name,Last Name,Display Name".getBytes());
+
+        mockMvc.perform(
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .multipart("/api/players/import/validate")
+                        .file(file))
+                .andExpect(
+                        org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                .status().isBadRequest())
+                .andExpect(
+                        org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                .jsonPath("$.status").value(400))
+                .andExpect(
+                        org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                .jsonPath("$.message")
+                                .value("Only .xlsx Excel files are supported"));
+    }
+
+    @Test
+    void playerExcelImportShouldNotPartiallyCreatePlayersWhenValidationFails()
+            throws Exception {
+
+        String testId = String.valueOf(System.currentTimeMillis());
+
+        String validPlayerName = "Atomic Player " + testId;
+        String invalidPlayerName = "Invalid Atomic Player " + testId;
+
+        long initialPlayerCount = playerRepository.count();
+
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook =
+                     new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+
+            org.apache.poi.ss.usermodel.Sheet sheet =
+                    workbook.createSheet("Players");
+
+            org.apache.poi.ss.usermodel.Row header = sheet.createRow(0);
+
+            header.createCell(0).setCellValue("First Name");
+            header.createCell(1).setCellValue("Last Name");
+            header.createCell(2).setCellValue("Display Name");
+            header.createCell(3).setCellValue("Phone");
+            header.createCell(4).setCellValue("Batting Style");
+            header.createCell(5).setCellValue("Bowling Style");
+            header.createCell(6).setCellValue("Role");
+
+            org.apache.poi.ss.usermodel.Row validRow = sheet.createRow(1);
+
+            validRow.createCell(0).setCellValue("Atomic");
+            validRow.createCell(1).setCellValue("Player");
+            validRow.createCell(2).setCellValue(validPlayerName);
+            validRow.createCell(3).setCellValue("9000000071");
+            validRow.createCell(4).setCellValue("RIGHT_HAND");
+            validRow.createCell(5).setCellValue("NONE");
+            validRow.createCell(6).setCellValue("BATTER");
+
+            org.apache.poi.ss.usermodel.Row invalidRow = sheet.createRow(2);
+
+            invalidRow.createCell(0).setCellValue("");
+            invalidRow.createCell(1).setCellValue("Invalid");
+            invalidRow.createCell(2).setCellValue(invalidPlayerName);
+            invalidRow.createCell(3).setCellValue("9000000072");
+            invalidRow.createCell(4).setCellValue("RIGHT_HAND");
+            invalidRow.createCell(5).setCellValue("NONE");
+            invalidRow.createCell(6).setCellValue("BATTER");
+
+            java.io.ByteArrayOutputStream outputStream =
+                    new java.io.ByteArrayOutputStream();
+
+            workbook.write(outputStream);
+
+            mockMvc.perform(
+                    org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                            .multipart("/api/players/import")
+                            .file(
+                                    new org.springframework.mock.web.MockMultipartFile(
+                                            "file",
+                                            "atomic-players.xlsx",
+                                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                            outputStream.toByteArray())))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .status().isOk())
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.totalRows").value(2))
+                    .andExpect(
+                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                    .jsonPath("$.createdRows").value(0));
+
+            assertEquals(
+                    initialPlayerCount,
+                    playerRepository.count());
+
+            assertFalse(
+                    playerRepository.existsByDisplayName(validPlayerName));
+        }
+    }
+
+
 	private void createInningsState(
 				Innings innings,
 				Player striker,
