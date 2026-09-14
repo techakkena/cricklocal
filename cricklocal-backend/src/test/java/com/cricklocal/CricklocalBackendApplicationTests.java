@@ -56,6 +56,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -3587,6 +3588,95 @@ class CricklocalBackendApplicationTests {
         }
     }
 
+	@Test
+    void setCaptainApiShouldAssignActiveTeamMemberAsCaptain() throws Exception {
+
+                String testId = String.valueOf(System.currentTimeMillis());
+
+                Team team = new Team();
+                team.setName("Captain Team " + testId);
+                team.setShortName("CAP" + testId);
+                team.setCity("Nellore");
+                team = teamRepository.save(team);
+
+                Player player = new Player();
+                player.setFirstName("Captain");
+                player.setLastName("Player");
+                player.setDisplayName("Captain Player " + testId);
+                player.setRole(PlayerRole.BATTER);
+                player = playerRepository.save(player);
+
+                TeamPlayer teamPlayer = new TeamPlayer();
+                teamPlayer.setTeam(team);
+                teamPlayer.setPlayer(player);
+                teamPlayer.setJerseyNumber(7);
+                teamPlayer = teamPlayerRepository.save(teamPlayer);
+
+                mockMvc.perform(put(
+                                "/api/teams/" + team.getId()
+                                        + "/captain/" + player.getId()))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$.teamId").value(team.getId()))
+                                .andExpect(jsonPath("$.teamName")
+                                                .value("Captain Team " + testId))
+                                .andExpect(jsonPath("$.shortName")
+                                                .value("CAP" + testId))
+                                .andExpect(jsonPath("$.teamPlayerId")
+                                                .value(teamPlayer.getId()))
+                                .andExpect(jsonPath("$.playerId")
+                                                .value(player.getId()))
+                                .andExpect(jsonPath("$.displayName")
+                                                .value("Captain Player " + testId))
+                                .andExpect(jsonPath("$.jerseyNumber").value(7))
+                                .andExpect(jsonPath("$.active").value(true));
+
+                Team savedTeam = teamRepository.findById(team.getId()).orElseThrow();
+
+                assertEquals(
+                                teamPlayer.getId(),
+                                savedTeam.getCaptain().getId());
+        }
+
+    @Test
+    void getTeamPlayersApiShouldReturnNonRecursiveRosterResponses() throws Exception {
+
+                String testId = String.valueOf(System.currentTimeMillis());
+
+                Team team = new Team();
+                team.setName("Roster Team " + testId);
+                team.setShortName("ROS" + testId);
+                team.setCity("Nellore");
+                team = teamRepository.save(team);
+
+                Player player = new Player();
+                player.setFirstName("Roster");
+                player.setLastName("Player");
+                player.setDisplayName("Roster Player " + testId);
+                player.setRole(PlayerRole.BATTER);
+                player = playerRepository.save(player);
+
+                TeamPlayer teamPlayer = new TeamPlayer();
+                teamPlayer.setTeam(team);
+                teamPlayer.setPlayer(player);
+                teamPlayer.setJerseyNumber(18);
+                teamPlayer = teamPlayerRepository.save(teamPlayer);
+
+                mockMvc.perform(get("/api/teams/" + team.getId() + "/players"))
+                                .andExpect(status().isOk())
+                                .andExpect(jsonPath("$").isArray())
+                                .andExpect(jsonPath("$.length()").value(1))
+                                .andExpect(jsonPath("$[0].teamPlayerId")
+                                                .value(teamPlayer.getId()))
+                                .andExpect(jsonPath("$[0].playerId")
+                                                .value(player.getId()))
+                                .andExpect(jsonPath("$[0].displayName")
+                                                .value("Roster Player " + testId))
+                                .andExpect(jsonPath("$[0].jerseyNumber").value(18))
+                                .andExpect(jsonPath("$[0].active").value(true))
+                                .andExpect(jsonPath("$[0].team").doesNotExist())
+                                .andExpect(jsonPath("$[0].player").doesNotExist())
+                                .andExpect(jsonPath("$[0].captain").doesNotExist());
+    }
 
 	private void createInningsState(
 				Innings innings,

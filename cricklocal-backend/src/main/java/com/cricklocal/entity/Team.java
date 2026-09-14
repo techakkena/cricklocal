@@ -23,6 +23,10 @@ public class Team {
     @Column(nullable = false)
     private Boolean active = true;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "captain_team_player_id")
+    private TeamPlayer captain;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt;
 
@@ -65,6 +69,14 @@ public class Team {
 
     public void setActive(Boolean active) {
         this.active = active;
+    }
+
+     public TeamPlayer getCaptain() {
+        return captain;
+    }
+
+    public void setCaptain(TeamPlayer captain) {
+        this.captain = captain;
     }
 
     public Instant getCreatedAt() {
