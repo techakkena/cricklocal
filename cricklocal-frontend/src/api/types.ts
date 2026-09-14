@@ -138,3 +138,26 @@ export interface PlayerResponse {
   createdAt: string;
   teams: PlayerTeamResponse[];
 }
+
+export type SeriesStatus =
+  | "PLANNED"
+  | "LIVE"
+  | "COMPLETED"
+  | "CANCELLED";
+
+export interface SeriesTeamResponse {
+  teamId: number;
+  teamName: string;
+  shortName: string;
+}
+
+export interface SeriesResponse {
+  id: number;
+  name: string;
+  totalMatches: number;
+  status: SeriesStatus;
+  startDate: string;
+  endDate: string | null;
+  createdAt: string;
+  teams: SeriesTeamResponse[];
+}

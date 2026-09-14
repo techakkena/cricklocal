@@ -7,6 +7,7 @@ import NotFound from "./pages/OtherPage/NotFound";
 import Home from "./pages/Dashboard/Home";
 import Teams from "./pages/Teams";
 import Players from "./pages/Players";
+import Series from "./pages/Series";
 import PlaceholderPage from "./pages/PlaceholderPage";
 
 export default function App() {
@@ -21,15 +22,7 @@ export default function App() {
           {/* Manage */}
           <Route path="/teams" element={<Teams />} />
           <Route path="/players" element={<Players />} />
-          <Route
-            path="/series"
-            element={
-              <PlaceholderPage
-                title="Series"
-                description="Create and manage cricket series."
-              />
-            }
-          />
+          <Route path="/series" element={<Series />} />
           <Route
             path="/matches"
             element={
