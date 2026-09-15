@@ -12,6 +12,8 @@ import com.cricklocal.entity.MatchLineup;
 import com.cricklocal.entity.Player;
 import com.cricklocal.entity.Team;
 import com.cricklocal.entity.TeamPlayer;
+import com.cricklocal.entity.Series;
+import com.cricklocal.entity.SeriesTeam;
 import com.cricklocal.enums.ExtraType;
 import com.cricklocal.enums.WicketType;
 import com.cricklocal.enums.DismissalEnd;
@@ -30,6 +32,8 @@ import com.cricklocal.repository.TeamRepository;
 import com.cricklocal.repository.InningsStateRepository;
 import com.cricklocal.repository.MatchResultRepository;
 import com.cricklocal.repository.TeamPlayerRepository;
+import com.cricklocal.repository.SeriesTeamRepository;
+import com.cricklocal.repository.SeriesRepository;
 import com.cricklocal.service.DeliveryService;
 import com.cricklocal.service.InningsService;
 import com.cricklocal.service.ScorecardService;
@@ -73,6 +77,12 @@ class CricklocalBackendApplicationTests {
 
     @Autowired
     private MatchRepository matchRepository;
+
+	@Autowired
+	private SeriesTeamRepository seriesTeamRepository;
+
+	@Autowired
+	private SeriesRepository seriesRepository;
 
     @Autowired
     private MatchLineupRepository matchLineupRepository;
@@ -3589,6 +3599,115 @@ class CricklocalBackendApplicationTests {
     }
 
 	@Test
+	void addPlayerToTeamShouldRejectDuplicateActiveJerseyNumber()
+			throws Exception {
+
+		String testId = String.valueOf(System.currentTimeMillis());
+
+		Team team = new Team();
+		team.setName("Jersey Team " + testId);
+		team.setShortName("JER" + testId);
+		team.setCity("Nellore");
+		team = teamRepository.save(team);
+
+		Player firstPlayer = new Player();
+		firstPlayer.setFirstName("First");
+		firstPlayer.setLastName("Player");
+		firstPlayer.setDisplayName("First Player " + testId);
+		firstPlayer.setRole(PlayerRole.BATTER);
+		firstPlayer = playerRepository.save(firstPlayer);
+
+		TeamPlayer firstTeamPlayer = new TeamPlayer();
+		firstTeamPlayer.setTeam(team);
+		firstTeamPlayer.setPlayer(firstPlayer);
+		firstTeamPlayer.setJerseyNumber(18);
+		teamPlayerRepository.save(firstTeamPlayer);
+
+		Player secondPlayer = new Player();
+		secondPlayer.setFirstName("Second");
+		secondPlayer.setLastName("Player");
+		secondPlayer.setDisplayName("Second Player " + testId);
+		secondPlayer.setRole(PlayerRole.BATTER);
+		secondPlayer = playerRepository.save(secondPlayer);
+
+		mockMvc.perform(
+				post("/api/teams/" + team.getId()
+						+ "/players/" + secondPlayer.getId())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+									"jerseyNumber": 18
+								}
+								"""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.status").value(400))
+				.andExpect(jsonPath("$.message")
+						.value("Jersey number is already assigned to an active player"));
+	}
+
+	@Test
+	void removePlayerFromTeamShouldDeactivatePlayerAndReleaseJerseyNumber()
+			throws Exception {
+
+		String testId = String.valueOf(System.currentTimeMillis());
+
+		Team team = new Team();
+		team.setName("Remove Team " + testId);
+		team.setShortName("REM" + testId);
+		team.setCity("Nellore");
+		team = teamRepository.save(team);
+
+		Player firstPlayer = new Player();
+		firstPlayer.setFirstName("First");
+		firstPlayer.setLastName("Player");
+		firstPlayer.setDisplayName("Remove First " + testId);
+		firstPlayer.setRole(PlayerRole.BATTER);
+		firstPlayer = playerRepository.save(firstPlayer);
+
+		TeamPlayer firstTeamPlayer = new TeamPlayer();
+		firstTeamPlayer.setTeam(team);
+		firstTeamPlayer.setPlayer(firstPlayer);
+		firstTeamPlayer.setJerseyNumber(18);
+		firstTeamPlayer = teamPlayerRepository.save(firstTeamPlayer);
+
+		mockMvc.perform(
+				org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+						.delete("/api/teams/" + team.getId()
+								+ "/players/" + firstPlayer.getId()))
+				.andExpect(status().isNoContent());
+
+		TeamPlayer removedPlayer = teamPlayerRepository
+				.findById(firstTeamPlayer.getId())
+				.orElseThrow();
+
+		assertFalse(removedPlayer.getActive());
+		assertTrue(removedPlayer.getLeftAt() != null);
+
+		mockMvc.perform(
+				get("/api/teams/" + team.getId() + "/players"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.length()").value(0));
+
+		Player secondPlayer = new Player();
+		secondPlayer.setFirstName("Second");
+		secondPlayer.setLastName("Player");
+		secondPlayer.setDisplayName("Remove Second " + testId);
+		secondPlayer.setRole(PlayerRole.BATTER);
+		secondPlayer = playerRepository.save(secondPlayer);
+
+		mockMvc.perform(
+				post("/api/teams/" + team.getId()
+						+ "/players/" + secondPlayer.getId())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+									"jerseyNumber": 18
+								}
+								"""))
+				.andExpect(status().isCreated());
+	}
+
+	@Test
     void setCaptainApiShouldAssignActiveTeamMemberAsCaptain() throws Exception {
 
                 String testId = String.valueOf(System.currentTimeMillis());
@@ -3635,7 +3754,95 @@ class CricklocalBackendApplicationTests {
                 assertEquals(
                                 teamPlayer.getId(),
                                 savedTeam.getCaptain().getId());
-        }
+    }
+
+	@Test
+	void getTeamCaptainApiShouldReturnCurrentCaptain() throws Exception {
+
+		String testId = String.valueOf(System.currentTimeMillis());
+
+		Team team = new Team();
+		team.setName("Captain Get Team " + testId);
+		team.setShortName("CGT" + testId);
+		team.setCity("Nellore");
+		team = teamRepository.save(team);
+
+		Player player = new Player();
+		player.setFirstName("Captain");
+		player.setLastName("Get");
+		player.setDisplayName("Captain Get " + testId);
+		player.setRole(PlayerRole.BATTER);
+		player = playerRepository.save(player);
+
+		TeamPlayer teamPlayer = new TeamPlayer();
+		teamPlayer.setTeam(team);
+		teamPlayer.setPlayer(player);
+		teamPlayer.setJerseyNumber(7);
+		teamPlayer = teamPlayerRepository.save(teamPlayer);
+
+		team.setCaptain(teamPlayer);
+		teamRepository.save(team);
+
+		mockMvc.perform(
+				get("/api/teams/" + team.getId() + "/captain"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.teamId").value(team.getId()))
+				.andExpect(jsonPath("$.teamPlayerId").value(teamPlayer.getId()))
+				.andExpect(jsonPath("$.playerId").value(player.getId()))
+				.andExpect(jsonPath("$.displayName")
+						.value("Captain Get " + testId))
+				.andExpect(jsonPath("$.jerseyNumber").value(7))
+				.andExpect(jsonPath("$.active").value(true));
+	}
+
+	@Test
+	void removeCaptainFromTeamShouldClearCaptain() throws Exception {
+
+		String testId = String.valueOf(System.currentTimeMillis());
+
+		Team team = new Team();
+		team.setName("Captain Remove Team " + testId);
+		team.setShortName("CRT" + testId);
+		team.setCity("Nellore");
+		team = teamRepository.save(team);
+
+		Player captain = new Player();
+		captain.setFirstName("Captain");
+		captain.setLastName("Player");
+		captain.setDisplayName("Captain Player " + testId);
+		captain.setRole(PlayerRole.BATTER);
+		captain = playerRepository.save(captain);
+
+		TeamPlayer teamPlayer = new TeamPlayer();
+		teamPlayer.setTeam(team);
+		teamPlayer.setPlayer(captain);
+		teamPlayer.setJerseyNumber(7);
+		teamPlayer = teamPlayerRepository.save(teamPlayer);
+
+		mockMvc.perform(
+				put("/api/teams/" + team.getId()
+						+ "/captain/" + captain.getId()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.playerId").value(captain.getId()));
+
+		mockMvc.perform(
+				org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+						.delete("/api/teams/" + team.getId()
+								+ "/players/" + captain.getId()))
+				.andExpect(status().isNoContent());
+
+		Team updatedTeam = teamRepository.findById(team.getId())
+				.orElseThrow();
+
+		assertTrue(updatedTeam.getCaptain() == null);
+
+		TeamPlayer removedCaptain = teamPlayerRepository
+				.findById(teamPlayer.getId())
+				.orElseThrow();
+
+		assertFalse(removedCaptain.getActive());
+		assertTrue(removedCaptain.getLeftAt() != null);
+	}
 
     @Test
     void getTeamPlayersApiShouldReturnNonRecursiveRosterResponses() throws Exception {
@@ -3677,6 +3884,245 @@ class CricklocalBackendApplicationTests {
                                 .andExpect(jsonPath("$[0].player").doesNotExist())
                                 .andExpect(jsonPath("$[0].captain").doesNotExist());
     }
+
+	@Test
+	void addPlayerToTeamApiShouldReturnSafeRosterResponse()
+			throws Exception {
+
+		String testId = String.valueOf(System.currentTimeMillis());
+
+		Team team = new Team();
+		team.setName("Response Team " + testId);
+		team.setShortName("RES" + testId);
+		team.setCity("Nellore");
+		team = teamRepository.save(team);
+
+		Player player = new Player();
+		player.setFirstName("Response");
+		player.setLastName("Player");
+		player.setDisplayName("Response Player " + testId);
+		player.setRole(PlayerRole.BATTER);
+		player = playerRepository.save(player);
+
+		mockMvc.perform(
+				post("/api/teams/" + team.getId()
+						+ "/players/" + player.getId())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+									"jerseyNumber": 18
+								}
+								"""))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.teamPlayerId").exists())
+				.andExpect(jsonPath("$.playerId").value(player.getId()))
+				.andExpect(jsonPath("$.displayName")
+						.value("Response Player " + testId))
+				.andExpect(jsonPath("$.jerseyNumber").value(18))
+				.andExpect(jsonPath("$.active").value(true))
+				.andExpect(jsonPath("$.joinedAt").exists())
+				.andExpect(jsonPath("$.team").doesNotExist())
+				.andExpect(jsonPath("$.player").doesNotExist());
+	}
+
+	@Test
+	void addPlayerToAnotherTeamInSameSeriesShouldBeRejected() throws Exception {
+		String testId = String.valueOf(System.currentTimeMillis());
+
+		Team firstTeam = new Team();
+		firstTeam.setName("Series Team One " + testId);
+		firstTeam.setShortName("ST1" + testId);
+		firstTeam.setCity("Nellore");
+		firstTeam = teamRepository.save(firstTeam);
+
+		Team secondTeam = new Team();
+		secondTeam.setName("Series Team Two " + testId);
+		secondTeam.setShortName("ST2" + testId);
+		secondTeam.setCity("Nellore");
+		secondTeam = teamRepository.save(secondTeam);
+
+		Series series = new Series();
+		series.setName("Player Conflict Series " + testId);
+		series.setTotalMatches(5);
+		series.setStartDate(java.time.LocalDate.now());
+		series = seriesRepository.save(series);
+
+		SeriesTeam firstSeriesTeam = new SeriesTeam();
+		firstSeriesTeam.setSeries(series);
+		firstSeriesTeam.setTeam(firstTeam);
+		seriesTeamRepository.save(firstSeriesTeam);
+
+		SeriesTeam secondSeriesTeam = new SeriesTeam();
+		secondSeriesTeam.setSeries(series);
+		secondSeriesTeam.setTeam(secondTeam);
+		seriesTeamRepository.save(secondSeriesTeam);
+
+		Player player = new Player();
+		player.setFirstName("Conflict");
+		player.setLastName("Player");
+		player.setDisplayName("Conflict Player " + testId);
+		player.setRole(PlayerRole.BATTER);
+		player = playerRepository.save(player);
+
+		TeamPlayer existingMembership = new TeamPlayer();
+		existingMembership.setTeam(firstTeam);
+		existingMembership.setPlayer(player);
+		existingMembership.setJerseyNumber(18);
+		teamPlayerRepository.save(existingMembership);
+
+		mockMvc.perform(
+				post("/api/teams/" + secondTeam.getId()
+						+ "/players/" + player.getId())
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("""
+						{
+						"jerseyNumber": 27
+						}
+						"""))
+			.andExpect(status().isBadRequest())
+			.andExpect(jsonPath("$.message")
+					.value("Player is already assigned to another team in this series"));
+
+		assertFalse(
+				teamPlayerRepository.findByTeamAndPlayer(secondTeam, player)
+						.isPresent());
+	}
+
+	@Test
+	void addPlayerToTeamInDifferentSeriesShouldBeAllowed() throws Exception {
+		String testId = String.valueOf(System.currentTimeMillis());
+
+		Team firstTeam = new Team();
+		firstTeam.setName("Different Series Team One " + testId);
+		firstTeam.setShortName("DS1" + testId);
+		firstTeam.setCity("Nellore");
+		firstTeam = teamRepository.save(firstTeam);
+
+		Team secondTeam = new Team();
+		secondTeam.setName("Different Series Team Two " + testId);
+		secondTeam.setShortName("DS2" + testId);
+		secondTeam.setCity("Nellore");
+		secondTeam = teamRepository.save(secondTeam);
+
+		Series firstSeries = new Series();
+		firstSeries.setName("First Series " + testId);
+		firstSeries.setTotalMatches(5);
+		firstSeries.setStartDate(java.time.LocalDate.now());
+		firstSeries = seriesRepository.save(firstSeries);
+
+		Series secondSeries = new Series();
+		secondSeries.setName("Second Series " + testId);
+		secondSeries.setTotalMatches(5);
+		secondSeries.setStartDate(java.time.LocalDate.now());
+		secondSeries = seriesRepository.save(secondSeries);
+
+		SeriesTeam firstSeriesTeam = new SeriesTeam();
+		firstSeriesTeam.setSeries(firstSeries);
+		firstSeriesTeam.setTeam(firstTeam);
+		seriesTeamRepository.save(firstSeriesTeam);
+
+		SeriesTeam secondSeriesTeam = new SeriesTeam();
+		secondSeriesTeam.setSeries(secondSeries);
+		secondSeriesTeam.setTeam(secondTeam);
+		seriesTeamRepository.save(secondSeriesTeam);
+
+		Player player = new Player();
+		player.setFirstName("Different");
+		player.setLastName("Series");
+		player.setDisplayName("Different Series Player " + testId);
+		player.setRole(PlayerRole.BATTER);
+		player = playerRepository.save(player);
+
+		TeamPlayer existingMembership = new TeamPlayer();
+		existingMembership.setTeam(firstTeam);
+		existingMembership.setPlayer(player);
+		existingMembership.setJerseyNumber(18);
+		teamPlayerRepository.save(existingMembership);
+
+		mockMvc.perform(
+				post("/api/teams/" + secondTeam.getId()
+						+ "/players/" + player.getId())
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("""
+						{
+						"jerseyNumber": 27
+						}
+						"""))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.playerId").value(player.getId()))
+			.andExpect(jsonPath("$.jerseyNumber").value(27))
+			.andExpect(jsonPath("$.active").value(true));
+
+		assertTrue(
+				teamPlayerRepository.findByTeamAndPlayer(secondTeam, player)
+						.isPresent());
+	}
+
+	@Test
+	void addPlayerToTeamShouldAllowInactiveMembershipInSameSeries() throws Exception {
+		String testId = String.valueOf(System.currentTimeMillis());
+
+		Team firstTeam = new Team();
+		firstTeam.setName("Inactive Series Team One " + testId);
+		firstTeam.setShortName("IS1" + testId);
+		firstTeam.setCity("Nellore");
+		firstTeam = teamRepository.save(firstTeam);
+
+		Team secondTeam = new Team();
+		secondTeam.setName("Inactive Series Team Two " + testId);
+		secondTeam.setShortName("IS2" + testId);
+		secondTeam.setCity("Nellore");
+		secondTeam = teamRepository.save(secondTeam);
+
+		Series series = new Series();
+		series.setName("Inactive Membership Series " + testId);
+		series.setTotalMatches(5);
+		series.setStartDate(java.time.LocalDate.now());
+		series = seriesRepository.save(series);
+
+		SeriesTeam firstSeriesTeam = new SeriesTeam();
+		firstSeriesTeam.setSeries(series);
+		firstSeriesTeam.setTeam(firstTeam);
+		seriesTeamRepository.save(firstSeriesTeam);
+
+		SeriesTeam secondSeriesTeam = new SeriesTeam();
+		secondSeriesTeam.setSeries(series);
+		secondSeriesTeam.setTeam(secondTeam);
+		seriesTeamRepository.save(secondSeriesTeam);
+
+		Player player = new Player();
+		player.setFirstName("Inactive");
+		player.setLastName("Player");
+		player.setDisplayName("Inactive Player " + testId);
+		player.setRole(PlayerRole.BATTER);
+		player = playerRepository.save(player);
+
+		TeamPlayer previousMembership = new TeamPlayer();
+		previousMembership.setTeam(firstTeam);
+		previousMembership.setPlayer(player);
+		previousMembership.setJerseyNumber(18);
+		previousMembership.setActive(false);
+		previousMembership.setLeftAt(java.time.Instant.now());
+		teamPlayerRepository.save(previousMembership);
+
+		mockMvc.perform(
+				post("/api/teams/" + secondTeam.getId()
+						+ "/players/" + player.getId())
+					.contentType(MediaType.APPLICATION_JSON)
+					.content("""
+						{
+						"jerseyNumber": 27
+						}
+						"""))
+			.andExpect(status().isCreated())
+			.andExpect(jsonPath("$.playerId").value(player.getId()))
+			.andExpect(jsonPath("$.jerseyNumber").value(27))
+			.andExpect(jsonPath("$.active").value(true));
+
+		assertTrue(
+				teamPlayerRepository.findByTeamAndPlayer(secondTeam, player)
+						.isPresent());
+	}
 
 	private void createInningsState(
 				Innings innings,

@@ -13,6 +13,7 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Instant;
 import java.util.List;
 
 @RestController
@@ -22,11 +23,11 @@ public class TeamPlayerController {
     private final TeamRepository teamRepository;
     private final PlayerRepository playerRepository;
     private final TeamPlayerRepository teamPlayerRepository;
-
+    
     public TeamPlayerController(
-            TeamRepository teamRepository,
-            PlayerRepository playerRepository,
-            TeamPlayerRepository teamPlayerRepository) {
+        TeamRepository teamRepository,
+        PlayerRepository playerRepository,
+        TeamPlayerRepository teamPlayerRepository) {
         this.teamRepository = teamRepository;
         this.playerRepository = playerRepository;
         this.teamPlayerRepository = teamPlayerRepository;
@@ -34,7 +35,7 @@ public class TeamPlayerController {
 
     @PostMapping("/{teamId}/players/{playerId}")
     @ResponseStatus(HttpStatus.CREATED)
-    public TeamPlayer addPlayerToTeam(
+    public TeamRosterPlayerResponse addPlayerToTeam(
             @PathVariable Long teamId,
             @PathVariable Long playerId,
             @Valid @RequestBody AddPlayerToTeamRequest request) {
@@ -49,6 +50,12 @@ public class TeamPlayerController {
             throw new IllegalArgumentException("Player is already a member of this team");
         }
 
+        if (teamPlayerRepository.existsActiveMembershipInAnotherTeamOfSameSeries(
+                        player,
+                        team)) {
+                throw new IllegalArgumentException(
+                        "Player is already assigned to another team in this series");
+        }
         if (teamPlayerRepository.existsByTeamAndJerseyNumberAndActiveTrue(
                 team, request.getJerseyNumber())) {
             throw new IllegalArgumentException(
@@ -60,7 +67,9 @@ public class TeamPlayerController {
         teamPlayer.setPlayer(player);
         teamPlayer.setJerseyNumber(request.getJerseyNumber());
 
-        return teamPlayerRepository.save(teamPlayer);
+        TeamPlayer savedTeamPlayer = teamPlayerRepository.save(teamPlayer);
+
+        return toTeamRosterPlayerResponse(savedTeamPlayer);
     }
 
     @GetMapping("/{teamId}/players")
@@ -73,6 +82,64 @@ public class TeamPlayerController {
                 .stream()
                 .map(this::toTeamRosterPlayerResponse)
                 .toList();
+    }
+
+    @GetMapping("/{teamId}/captain")
+    public TeamCaptainResponse getCaptain(@PathVariable Long teamId) {
+
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new IllegalArgumentException("Team not found"));
+
+        TeamPlayer captain = team.getCaptain();
+
+        if (captain == null) {
+                throw new IllegalArgumentException("Team captain is not assigned");
+        }
+
+        TeamCaptainResponse response = new TeamCaptainResponse();
+        response.setTeamId(team.getId());
+        response.setTeamName(team.getName());
+        response.setShortName(team.getShortName());
+        response.setTeamPlayerId(captain.getId());
+        response.setPlayerId(captain.getPlayer().getId());
+        response.setDisplayName(captain.getPlayer().getDisplayName());
+        response.setJerseyNumber(captain.getJerseyNumber());
+        response.setActive(captain.getActive());
+
+        return response;
+    }
+
+    @DeleteMapping("/{teamId}/players/{playerId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removePlayerFromTeam(
+                @PathVariable Long teamId,
+                @PathVariable Long playerId) {
+
+        Team team = teamRepository.findById(teamId)
+                .orElseThrow(() -> new IllegalArgumentException("Team not found"));
+
+        Player player = playerRepository.findById(playerId)
+                .orElseThrow(() -> new IllegalArgumentException("Player not found"));
+
+        TeamPlayer teamPlayer = teamPlayerRepository
+                .findByTeamAndPlayer(team, player)
+                .orElseThrow(() -> new IllegalArgumentException(
+                        "Player is not a member of this team"));
+
+        if (!Boolean.TRUE.equals(teamPlayer.getActive())) {
+                throw new IllegalArgumentException(
+                        "Player is already inactive in this team");
+        }
+
+        if (team.getCaptain() != null
+                && team.getCaptain().getId().equals(teamPlayer.getId())) {
+                team.setCaptain(null);
+                teamRepository.save(team);
+        }
+
+        teamPlayer.setActive(false);
+        teamPlayer.setLeftAt(Instant.now());
+        teamPlayerRepository.save(teamPlayer);
     }
 
     @PutMapping("/{teamId}/captain/{playerId}")

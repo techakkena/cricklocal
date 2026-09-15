@@ -2,6 +2,7 @@ package com.cricklocal.controller;
 
 import com.cricklocal.dto.CreateTeamRequest;
 import com.cricklocal.dto.TeamImportResponse;
+import com.cricklocal.dto.TeamResponse;
 import com.cricklocal.entity.Team;
 import com.cricklocal.repository.TeamRepository;
 import com.cricklocal.service.TeamImportService;
@@ -9,6 +10,8 @@ import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/teams")
@@ -27,7 +30,7 @@ public class TeamController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Team createTeam(@Valid @RequestBody CreateTeamRequest request) {
+    public TeamResponse createTeam(@Valid @RequestBody CreateTeamRequest request) {
 
         Team team = new Team();
 
@@ -35,12 +38,15 @@ public class TeamController {
         team.setShortName(request.getShortName());
         team.setCity(request.getCity());
 
-        return teamRepository.save(team);
+        return toTeamResponse(teamRepository.save(team));
     }
 
     @GetMapping
-    public java.util.List<Team> getAllTeams() {
-        return teamRepository.findAll();
+    public List<TeamResponse> getAllTeams() {
+        return teamRepository.findAll()
+                .stream()
+                .map(this::toTeamResponse)
+                .toList();
     }
 
     @PostMapping("/import/validate")
@@ -49,10 +55,24 @@ public class TeamController {
 
         return teamImportService.validateExcel(file);
     }
+
     @PostMapping("/import")
     public TeamImportResponse importTeams(
             @RequestParam("file") MultipartFile file) {
 
         return teamImportService.importExcel(file);
+    }
+
+    private TeamResponse toTeamResponse(Team team) {
+        TeamResponse response = new TeamResponse();
+
+        response.setId(team.getId());
+        response.setName(team.getName());
+        response.setShortName(team.getShortName());
+        response.setCity(team.getCity());
+        response.setActive(team.getActive());
+        response.setCreatedAt(team.getCreatedAt());
+
+        return response;
     }
 }
