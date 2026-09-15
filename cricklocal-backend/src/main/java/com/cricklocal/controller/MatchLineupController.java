@@ -2,6 +2,7 @@ package com.cricklocal.controller;
 
 import com.cricklocal.dto.AddPlayerToMatchRequest;
 import com.cricklocal.dto.MatchLineupResponse;
+import com.cricklocal.dto.PlayingXIResponse;
 import com.cricklocal.service.MatchLineupService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -46,6 +47,17 @@ public class MatchLineupController {
             @PathVariable Long teamId) {
 
         return matchLineupService.getTeamMatchLineup(
+                matchId,
+                teamId
+        );
+    }
+
+    @PostMapping("/{matchId}/lineup/team/{teamId}/finalize")
+    public PlayingXIResponse finalizePlayingXI(
+            @PathVariable Long matchId,
+            @PathVariable Long teamId) {
+
+        return matchLineupService.finalizePlayingXI(
                 matchId,
                 teamId
         );

@@ -33,6 +33,7 @@ import com.cricklocal.repository.InningsStateRepository;
 import com.cricklocal.repository.MatchResultRepository;
 import com.cricklocal.repository.TeamPlayerRepository;
 import com.cricklocal.repository.SeriesTeamRepository;
+import com.cricklocal.repository.PlayingXIRepository;
 import com.cricklocal.repository.SeriesRepository;
 import com.cricklocal.service.DeliveryService;
 import com.cricklocal.service.InningsService;
@@ -83,6 +84,9 @@ class CricklocalBackendApplicationTests {
 
 	@Autowired
 	private SeriesRepository seriesRepository;
+
+	@Autowired
+	private PlayingXIRepository playingXIRepository;
 
     @Autowired
     private MatchLineupRepository matchLineupRepository;
@@ -4123,6 +4127,658 @@ class CricklocalBackendApplicationTests {
 				teamPlayerRepository.findByTeamAndPlayer(secondTeam, player)
 						.isPresent());
 	}
+
+	@Test
+    void finalizePlayingXIShouldCreatePlayingXIForExactlyElevenPlayersWithCaptain() throws Exception {
+        String testId = String.valueOf(System.nanoTime());
+
+        Team teamA = new Team();
+        teamA.setName("XI Team A " + testId);
+        teamA.setShortName("XIA" + testId.substring(testId.length() - 3));
+        teamA.setCity("Test City");
+        teamA = teamRepository.save(teamA);
+
+        Team teamB = new Team();
+        teamB.setName("XI Team B " + testId);
+        teamB.setShortName("XIB" + testId.substring(testId.length() - 3));
+        teamB.setCity("Test City");
+        teamB = teamRepository.save(teamB);
+
+        Match match = new Match();
+        match.setName("Playing XI Test Match " + testId);
+        match.setMatchNumber(1);
+        match.setFormat(MatchFormat.T20);
+        match.setTotalOvers(20);
+        match.setMaxPlayersPerTeam(11);
+        match.setScheduledAt(Instant.parse("2027-01-01T10:00:00Z"));
+        match.setStatus(MatchStatus.SCHEDULED);
+        match = matchRepository.save(match);
+
+        MatchTeam matchTeamA = new MatchTeam();
+        matchTeamA.setMatch(match);
+        matchTeamA.setTeam(teamA);
+        matchTeamA.setSide(MatchTeamSide.TEAM_A);
+        matchTeamRepository.save(matchTeamA);
+
+        MatchTeam matchTeamB = new MatchTeam();
+        matchTeamB.setMatch(match);
+        matchTeamB.setTeam(teamB);
+        matchTeamB.setSide(MatchTeamSide.TEAM_B);
+        matchTeamRepository.save(matchTeamB);
+
+        Player captain = createPlayer("XI Captain", "Player", "XI Captain " + testId, PlayerRole.BATTER);
+
+        TeamPlayer captainMembership = new TeamPlayer();
+        captainMembership.setTeam(teamA);
+        captainMembership.setPlayer(captain);
+        captainMembership.setJerseyNumber(1);
+        captainMembership.setActive(true);
+        teamPlayerRepository.save(captainMembership);
+
+        createLineup(match, teamA, captain, 1);
+
+        MatchLineup captainLineup = matchLineupRepository
+                .findByMatchAndPlayer(match, captain)
+                .orElseThrow();
+
+        captainLineup.setCaptain(true);
+        matchLineupRepository.save(captainLineup);
+
+        for (int i = 2; i <= 11; i++) {
+            Player player = createPlayer(
+                    "XI Player " + i,
+                    "Test",
+                    "XI Player " + i + " " + testId,
+                    PlayerRole.BATTER);
+
+            TeamPlayer membership = new TeamPlayer();
+            membership.setTeam(teamA);
+            membership.setPlayer(player);
+            membership.setJerseyNumber(i);
+            membership.setActive(true);
+            teamPlayerRepository.save(membership);
+
+            createLineup(match, teamA, player, i);
+        }
+
+        mockMvc.perform(
+                post("/api/matches/" + match.getId()
+                        + "/lineup/team/" + teamA.getId() + "/finalize"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.matchId").value(match.getId()))
+                .andExpect(jsonPath("$.teamId").value(teamA.getId()))
+                .andExpect(jsonPath("$.playerCount").value(11))
+                .andExpect(jsonPath("$.captainPlayerId").value(captain.getId()))
+                .andExpect(jsonPath("$.captainName").value(captain.getDisplayName()));
+
+        assertTrue(playingXIRepository.existsByMatchAndTeam(match, teamA));
+    }
+
+    @Test
+    void finalizePlayingXIShouldRejectWhenTeamHasFewerThanElevenPlayers() throws Exception {
+        String testId = String.valueOf(System.nanoTime());
+
+        Team teamA = new Team();
+        teamA.setName("XI Validation A " + testId);
+        teamA.setShortName("XVA" + testId.substring(testId.length() - 3));
+        teamA.setCity("Test City");
+        teamA = teamRepository.save(teamA);
+
+        Team teamB = new Team();
+        teamB.setName("XI Validation B " + testId);
+        teamB.setShortName("XVB" + testId.substring(testId.length() - 3));
+        teamB.setCity("Test City");
+        teamB = teamRepository.save(teamB);
+
+        Match match = new Match();
+        match.setName("Playing XI Validation Match " + testId);
+        match.setMatchNumber(1);
+        match.setFormat(MatchFormat.T20);
+        match.setTotalOvers(20);
+        match.setMaxPlayersPerTeam(11);
+        match.setScheduledAt(Instant.parse("2027-01-02T10:00:00Z"));
+        match.setStatus(MatchStatus.SCHEDULED);
+        match = matchRepository.save(match);
+
+        MatchTeam matchTeamA = new MatchTeam();
+        matchTeamA.setMatch(match);
+        matchTeamA.setTeam(teamA);
+        matchTeamA.setSide(MatchTeamSide.TEAM_A);
+        matchTeamRepository.save(matchTeamA);
+
+        MatchTeam matchTeamB = new MatchTeam();
+        matchTeamB.setMatch(match);
+        matchTeamB.setTeam(teamB);
+        matchTeamB.setSide(MatchTeamSide.TEAM_B);
+        matchTeamRepository.save(matchTeamB);
+
+        for (int i = 1; i <= 10; i++) {
+            Player player = createPlayer(
+                    "Validation Player " + i,
+                    "Test",
+                    "Validation Player " + i + " " + testId,
+                    PlayerRole.BATTER);
+
+            TeamPlayer membership = new TeamPlayer();
+            membership.setTeam(teamA);
+            membership.setPlayer(player);
+            membership.setJerseyNumber(i);
+            membership.setActive(true);
+            teamPlayerRepository.save(membership);
+
+            createLineup(match, teamA, player, i);
+        }
+
+        mockMvc.perform(
+                post("/api/matches/" + match.getId()
+                        + "/lineup/team/" + teamA.getId() + "/finalize"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message")
+                        .value("Exactly 11 players must be selected for the Playing XI"));
+
+        assertFalse(playingXIRepository.existsByMatchAndTeam(match, teamA));
+    }
+
+    @Test
+    void finalizePlayingXIShouldRejectWhenCaptainIsNotInPlayingXI() throws Exception {
+        String testId = String.valueOf(System.nanoTime());
+
+        Team teamA = new Team();
+        teamA.setName("Captain Validation A " + testId);
+        teamA.setShortName("CVA" + testId.substring(testId.length() - 3));
+        teamA.setCity("Test City");
+        teamA = teamRepository.save(teamA);
+
+        Team teamB = new Team();
+        teamB.setName("Captain Validation B " + testId);
+        teamB.setShortName("CVB" + testId.substring(testId.length() - 3));
+        teamB.setCity("Test City");
+        teamB = teamRepository.save(teamB);
+
+        Match match = new Match();
+        match.setName("Captain Validation Match " + testId);
+        match.setMatchNumber(1);
+        match.setFormat(MatchFormat.T20);
+        match.setTotalOvers(20);
+        match.setMaxPlayersPerTeam(11);
+        match.setScheduledAt(Instant.parse("2027-01-03T10:00:00Z"));
+        match.setStatus(MatchStatus.SCHEDULED);
+        match = matchRepository.save(match);
+
+        MatchTeam matchTeamA = new MatchTeam();
+        matchTeamA.setMatch(match);
+        matchTeamA.setTeam(teamA);
+        matchTeamA.setSide(MatchTeamSide.TEAM_A);
+        matchTeamRepository.save(matchTeamA);
+
+        MatchTeam matchTeamB = new MatchTeam();
+        matchTeamB.setMatch(match);
+        matchTeamB.setTeam(teamB);
+        matchTeamB.setSide(MatchTeamSide.TEAM_B);
+        matchTeamRepository.save(matchTeamB);
+
+        Player captain = createPlayer(
+                "Captain",
+                "Not Playing",
+                "Captain Not Playing " + testId,
+                PlayerRole.BATTER);
+
+        TeamPlayer captainMembership = new TeamPlayer();
+        captainMembership.setTeam(teamA);
+        captainMembership.setPlayer(captain);
+        captainMembership.setJerseyNumber(1);
+        captainMembership.setActive(true);
+        teamPlayerRepository.save(captainMembership);
+
+        createLineup(match, teamA, captain, 1);
+
+        MatchLineup captainLineup = matchLineupRepository
+                .findByMatchAndPlayer(match, captain)
+                .orElseThrow();
+
+        captainLineup.setCaptain(true);
+        captainLineup.setPlaying(false);
+        matchLineupRepository.save(captainLineup);
+
+        for (int i = 2; i <= 12; i++) {
+            Player player = createPlayer(
+                    "Playing Player " + i,
+                    "Test",
+                    "Playing Player " + i + " " + testId,
+                    PlayerRole.BATTER);
+
+            TeamPlayer membership = new TeamPlayer();
+            membership.setTeam(teamA);
+            membership.setPlayer(player);
+            membership.setJerseyNumber(i);
+            membership.setActive(true);
+            teamPlayerRepository.save(membership);
+
+            createLineup(match, teamA, player, i);
+        }
+
+        mockMvc.perform(
+                post("/api/matches/" + match.getId()
+                        + "/lineup/team/" + teamA.getId() + "/finalize"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message")
+                        .value("Captain must be part of the Playing XI"));
+
+        assertFalse(playingXIRepository.existsByMatchAndTeam(match, teamA));
+    }
+
+    @Test
+    void finalizePlayingXIShouldRejectSecondFinalizationForSameTeam() throws Exception {
+        String testId = String.valueOf(System.nanoTime());
+
+        Team teamA = new Team();
+        teamA.setName("Repeat XI A " + testId);
+        teamA.setShortName("RXA" + testId.substring(testId.length() - 3));
+        teamA.setCity("Test City");
+        teamA = teamRepository.save(teamA);
+
+        Team teamB = new Team();
+        teamB.setName("Repeat XI B " + testId);
+        teamB.setShortName("RXB" + testId.substring(testId.length() - 3));
+        teamB.setCity("Test City");
+        teamB = teamRepository.save(teamB);
+
+        Match match = new Match();
+        match.setName("Repeat XI Test Match " + testId);
+        match.setMatchNumber(1);
+        match.setFormat(MatchFormat.T20);
+        match.setTotalOvers(20);
+        match.setMaxPlayersPerTeam(11);
+        match.setScheduledAt(Instant.parse("2027-01-04T10:00:00Z"));
+        match.setStatus(MatchStatus.SCHEDULED);
+        match = matchRepository.save(match);
+
+        MatchTeam matchTeamA = new MatchTeam();
+        matchTeamA.setMatch(match);
+        matchTeamA.setTeam(teamA);
+        matchTeamA.setSide(MatchTeamSide.TEAM_A);
+        matchTeamRepository.save(matchTeamA);
+
+        MatchTeam matchTeamB = new MatchTeam();
+        matchTeamB.setMatch(match);
+        matchTeamB.setTeam(teamB);
+        matchTeamB.setSide(MatchTeamSide.TEAM_B);
+        matchTeamRepository.save(matchTeamB);
+
+        Player captain = createPlayer(
+                "Repeat Captain",
+                "Test",
+                "Repeat Captain " + testId,
+                PlayerRole.BATTER);
+
+        TeamPlayer captainMembership = new TeamPlayer();
+        captainMembership.setTeam(teamA);
+        captainMembership.setPlayer(captain);
+        captainMembership.setJerseyNumber(1);
+        captainMembership.setActive(true);
+        teamPlayerRepository.save(captainMembership);
+
+        createLineup(match, teamA, captain, 1);
+
+        MatchLineup captainLineup = matchLineupRepository
+                .findByMatchAndPlayer(match, captain)
+                .orElseThrow();
+
+        captainLineup.setCaptain(true);
+        matchLineupRepository.save(captainLineup);
+
+        for (int i = 2; i <= 11; i++) {
+            Player player = createPlayer(
+                    "Repeat Player " + i,
+                    "Test",
+                    "Repeat Player " + i + " " + testId,
+                    PlayerRole.BATTER);
+
+            TeamPlayer membership = new TeamPlayer();
+            membership.setTeam(teamA);
+            membership.setPlayer(player);
+            membership.setJerseyNumber(i);
+            membership.setActive(true);
+            teamPlayerRepository.save(membership);
+
+            createLineup(match, teamA, player, i);
+        }
+
+        mockMvc.perform(
+                post("/api/matches/" + match.getId()
+                        + "/lineup/team/" + teamA.getId() + "/finalize"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.playerCount").value(11));
+
+        mockMvc.perform(
+                post("/api/matches/" + match.getId()
+                        + "/lineup/team/" + teamA.getId() + "/finalize"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message")
+                        .value("Playing XI has already been finalized for this team"));
+
+        assertTrue(playingXIRepository
+                .findByMatchAndTeam(match, teamA)
+                .isPresent());
+    }
+
+    @Test
+    void finalizePlayingXIShouldRejectInactivePlayingXIPlayer() throws Exception {
+        String testId = String.valueOf(System.nanoTime());
+
+        Team teamA = new Team();
+        teamA.setName("Inactive XI A " + testId);
+        teamA.setShortName("IXA" + testId.substring(testId.length() - 3));
+        teamA.setCity("Test City");
+        teamA = teamRepository.save(teamA);
+
+        Team teamB = new Team();
+        teamB.setName("Inactive XI B " + testId);
+        teamB.setShortName("IXB" + testId.substring(testId.length() - 3));
+        teamB.setCity("Test City");
+        teamB = teamRepository.save(teamB);
+
+        Match match = new Match();
+        match.setName("Inactive XI Test Match " + testId);
+        match.setMatchNumber(1);
+        match.setFormat(MatchFormat.T20);
+        match.setTotalOvers(20);
+        match.setMaxPlayersPerTeam(11);
+        match.setScheduledAt(Instant.parse("2027-01-05T10:00:00Z"));
+        match.setStatus(MatchStatus.SCHEDULED);
+        match = matchRepository.save(match);
+
+        MatchTeam matchTeamA = new MatchTeam();
+        matchTeamA.setMatch(match);
+        matchTeamA.setTeam(teamA);
+        matchTeamA.setSide(MatchTeamSide.TEAM_A);
+        matchTeamRepository.save(matchTeamA);
+
+        MatchTeam matchTeamB = new MatchTeam();
+        matchTeamB.setMatch(match);
+        matchTeamB.setTeam(teamB);
+        matchTeamB.setSide(MatchTeamSide.TEAM_B);
+        matchTeamRepository.save(matchTeamB);
+
+        Player captain = createPlayer(
+                "Inactive Captain",
+                "Test",
+                "Inactive Captain " + testId,
+                PlayerRole.BATTER);
+
+        TeamPlayer captainMembership = new TeamPlayer();
+        captainMembership.setTeam(teamA);
+        captainMembership.setPlayer(captain);
+        captainMembership.setJerseyNumber(1);
+        captainMembership.setActive(true);
+        teamPlayerRepository.save(captainMembership);
+
+        createLineup(match, teamA, captain, 1);
+
+        MatchLineup captainLineup = matchLineupRepository
+                .findByMatchAndPlayer(match, captain)
+                .orElseThrow();
+
+        captainLineup.setCaptain(true);
+        matchLineupRepository.save(captainLineup);
+
+        for (int i = 2; i <= 11; i++) {
+            Player player = createPlayer(
+                    "Inactive XI Player " + i,
+                    "Test",
+                    "Inactive XI Player " + i + " " + testId,
+                    PlayerRole.BATTER);
+
+            TeamPlayer membership = new TeamPlayer();
+            membership.setTeam(teamA);
+            membership.setPlayer(player);
+            membership.setJerseyNumber(i);
+            membership.setActive(true);
+            teamPlayerRepository.save(membership);
+
+            createLineup(match, teamA, player, i);
+
+            if (i == 11) {
+                membership.setActive(false);
+                membership.setLeftAt(Instant.now());
+                teamPlayerRepository.save(membership);
+            }
+        }
+
+        mockMvc.perform(
+                post("/api/matches/" + match.getId()
+                        + "/lineup/team/" + teamA.getId() + "/finalize"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message")
+                        .value(org.hamcrest.Matchers.containsString(
+                                "Playing XI contains an inactive team member")));
+
+        assertFalse(playingXIRepository.existsByMatchAndTeam(match, teamA));
+    }
+
+    @Test
+    void finalizePlayingXIShouldRejectPlayerWithFinalizedPlayingXIAtSameScheduledTime() throws Exception {
+        String testId = String.valueOf(System.nanoTime());
+        Instant scheduledAt = Instant.parse("2027-01-06T10:00:00Z");
+
+        Team teamA = new Team();
+        teamA.setName("Conflict Team A " + testId);
+        teamA.setShortName("CTA" + testId.substring(testId.length() - 3));
+        teamA.setCity("Test City");
+        teamA = teamRepository.save(teamA);
+
+        Team teamB = new Team();
+        teamB.setName("Conflict Team B " + testId);
+        teamB.setShortName("CTB" + testId.substring(testId.length() - 3));
+        teamB.setCity("Test City");
+        teamB = teamRepository.save(teamB);
+
+        Team teamC = new Team();
+        teamC.setName("Conflict Team C " + testId);
+        teamC.setShortName("CTC" + testId.substring(testId.length() - 3));
+        teamC.setCity("Test City");
+        teamC = teamRepository.save(teamC);
+
+        Team teamD = new Team();
+        teamD.setName("Conflict Team D " + testId);
+        teamD.setShortName("CTD" + testId.substring(testId.length() - 3));
+        teamD.setCity("Test City");
+        teamD = teamRepository.save(teamD);
+
+        Match match1 = new Match();
+        match1.setName("Conflict Match 1 " + testId);
+        match1.setMatchNumber(1);
+        match1.setFormat(MatchFormat.T20);
+        match1.setTotalOvers(20);
+        match1.setMaxPlayersPerTeam(11);
+        match1.setScheduledAt(scheduledAt);
+        match1.setStatus(MatchStatus.SCHEDULED);
+        match1 = matchRepository.save(match1);
+
+        MatchTeam match1TeamA = new MatchTeam();
+        match1TeamA.setMatch(match1);
+        match1TeamA.setTeam(teamA);
+        match1TeamA.setSide(MatchTeamSide.TEAM_A);
+        matchTeamRepository.save(match1TeamA);
+
+        MatchTeam match1TeamB = new MatchTeam();
+        match1TeamB.setMatch(match1);
+        match1TeamB.setTeam(teamB);
+        match1TeamB.setSide(MatchTeamSide.TEAM_B);
+        matchTeamRepository.save(match1TeamB);
+
+        Match match2 = new Match();
+        match2.setName("Conflict Match 2 " + testId);
+        match2.setMatchNumber(2);
+        match2.setFormat(MatchFormat.T20);
+        match2.setTotalOvers(20);
+        match2.setMaxPlayersPerTeam(11);
+        match2.setScheduledAt(scheduledAt);
+        match2.setStatus(MatchStatus.SCHEDULED);
+        match2 = matchRepository.save(match2);
+
+        MatchTeam match2TeamA = new MatchTeam();
+        match2TeamA.setMatch(match2);
+        match2TeamA.setTeam(teamC);
+        match2TeamA.setSide(MatchTeamSide.TEAM_A);
+        matchTeamRepository.save(match2TeamA);
+
+        MatchTeam match2TeamB = new MatchTeam();
+        match2TeamB.setMatch(match2);
+        match2TeamB.setTeam(teamD);
+        match2TeamB.setSide(MatchTeamSide.TEAM_B);
+        matchTeamRepository.save(match2TeamB);
+
+        Player sharedPlayer = createPlayer(
+                "Conflict Player",
+                "Shared",
+                "Conflict Player " + testId,
+                PlayerRole.BATTER);
+
+        TeamPlayer membershipA = new TeamPlayer();
+        membershipA.setTeam(teamA);
+        membershipA.setPlayer(sharedPlayer);
+        membershipA.setJerseyNumber(1);
+        membershipA.setActive(true);
+        teamPlayerRepository.save(membershipA);
+
+        TeamPlayer membershipC = new TeamPlayer();
+        membershipC.setTeam(teamC);
+        membershipC.setPlayer(sharedPlayer);
+        membershipC.setJerseyNumber(1);
+        membershipC.setActive(true);
+        teamPlayerRepository.save(membershipC);
+
+        createLineup(match1, teamA, sharedPlayer, 1);
+
+        MatchLineup match1CaptainLineup = matchLineupRepository
+                .findByMatchAndPlayer(match1, sharedPlayer)
+                .orElseThrow();
+
+        match1CaptainLineup.setCaptain(true);
+        matchLineupRepository.save(match1CaptainLineup);
+
+        for (int i = 2; i <= 11; i++) {
+            Player player = createPlayer(
+                    "Match1 Player " + i,
+                    "Test",
+                    "Match1 Player " + i + " " + testId,
+                    PlayerRole.BATTER);
+
+            TeamPlayer membership = new TeamPlayer();
+            membership.setTeam(teamA);
+            membership.setPlayer(player);
+            membership.setJerseyNumber(i);
+            membership.setActive(true);
+            teamPlayerRepository.save(membership);
+
+            createLineup(match1, teamA, player, i);
+        }
+
+        mockMvc.perform(
+                post("/api/matches/" + match1.getId()
+                        + "/lineup/team/" + teamA.getId() + "/finalize"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.playerCount").value(11));
+
+        assertTrue(playingXIRepository
+                .findByMatchAndTeam(match1, teamA)
+                .isPresent());
+
+        createLineup(match2, teamC, sharedPlayer, 1);
+
+        MatchLineup match2CaptainLineup = matchLineupRepository
+                .findByMatchAndPlayer(match2, sharedPlayer)
+                .orElseThrow();
+
+        match2CaptainLineup.setCaptain(true);
+        matchLineupRepository.save(match2CaptainLineup);
+
+        for (int i = 2; i <= 11; i++) {
+            Player player = createPlayer(
+                    "Match2 Player " + i,
+                    "Test",
+                    "Match2 Player " + i + " " + testId,
+                    PlayerRole.BATTER);
+
+            TeamPlayer membership = new TeamPlayer();
+            membership.setTeam(teamC);
+            membership.setPlayer(player);
+            membership.setJerseyNumber(i);
+            membership.setActive(true);
+            teamPlayerRepository.save(membership);
+
+            createLineup(match2, teamC, player, i);
+        }
+
+        mockMvc.perform(
+                post("/api/matches/" + match2.getId()
+                        + "/lineup/team/" + teamC.getId() + "/finalize"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message")
+                        .value(org.hamcrest.Matchers.containsString(
+                                "Player has a finalized Playing XI conflict at the same scheduled time")));
+
+        assertFalse(playingXIRepository
+                .findByMatchAndTeam(match2, teamC)
+                .isPresent());
+    }
+
+    @Test
+    void finalizePlayingXIShouldRejectTeamThatDoesNotBelongToMatch() throws Exception {
+        String testId = String.valueOf(System.nanoTime());
+
+        Team teamA = new Team();
+        teamA.setName("Ownership Team A " + testId);
+        teamA.setShortName("OTA" + testId.substring(testId.length() - 3));
+        teamA.setCity("Test City");
+        teamA = teamRepository.save(teamA);
+
+        Team teamB = new Team();
+        teamB.setName("Ownership Team B " + testId);
+        teamB.setShortName("OTB" + testId.substring(testId.length() - 3));
+        teamB.setCity("Test City");
+        teamB = teamRepository.save(teamB);
+
+        Team unrelatedTeam = new Team();
+        unrelatedTeam.setName("Unrelated Team " + testId);
+        unrelatedTeam.setShortName("OUT" + testId.substring(testId.length() - 3));
+        unrelatedTeam.setCity("Test City");
+        unrelatedTeam = teamRepository.save(unrelatedTeam);
+
+        Match match = new Match();
+        match.setName("Ownership Test Match " + testId);
+        match.setMatchNumber(1);
+        match.setFormat(MatchFormat.T20);
+        match.setTotalOvers(20);
+        match.setMaxPlayersPerTeam(11);
+        match.setScheduledAt(Instant.parse("2027-01-07T10:00:00Z"));
+        match.setStatus(MatchStatus.SCHEDULED);
+        match = matchRepository.save(match);
+
+        MatchTeam matchTeamA = new MatchTeam();
+        matchTeamA.setMatch(match);
+        matchTeamA.setTeam(teamA);
+        matchTeamA.setSide(MatchTeamSide.TEAM_A);
+        matchTeamRepository.save(matchTeamA);
+
+        MatchTeam matchTeamB = new MatchTeam();
+        matchTeamB.setMatch(match);
+        matchTeamB.setTeam(teamB);
+        matchTeamB.setSide(MatchTeamSide.TEAM_B);
+        matchTeamRepository.save(matchTeamB);
+
+        mockMvc.perform(
+                post("/api/matches/" + match.getId()
+                        + "/lineup/team/" + unrelatedTeam.getId() + "/finalize"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message")
+                        .value("Team does not belong to this match"));
+
+        assertFalse(playingXIRepository
+                .findByMatchAndTeam(match, unrelatedTeam)
+                .isPresent());
+    }
 
 	private void createInningsState(
 				Innings innings,

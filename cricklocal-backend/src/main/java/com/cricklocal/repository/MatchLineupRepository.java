@@ -4,6 +4,7 @@ import com.cricklocal.entity.Match;
 import com.cricklocal.entity.MatchLineup;
 import com.cricklocal.entity.Player;
 import com.cricklocal.entity.Team;
+import com.cricklocal.entity.PlayingXI;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 
@@ -57,4 +58,34 @@ public interface MatchLineupRepository
         order by m.scheduledAt desc, ml.id desc
         """)
     List<MatchLineup> findPlayerMatchHistory(Player player);
+
+    long countByMatchAndTeamAndPlayingTrue(
+        Match match,
+        Team team
+    );
+
+    Optional<MatchLineup> findByMatchAndTeamAndPlayingTrueAndCaptainTrue(
+        Match match,
+        Team team
+    );
+
+    @Query("""
+        select count(ml) > 0
+        from MatchLineup ml
+        where ml.player = :player
+        and ml.playing = true
+        and ml.match <> :match
+        and ml.match.scheduledAt = :scheduledAt
+        and exists (
+                select pxi.id
+                from PlayingXI pxi
+                where pxi.match = ml.match
+                and pxi.team = ml.team
+        )
+        """)
+        boolean existsFinalizedScheduleConflict(
+                Player player,
+                Match match,
+                java.time.Instant scheduledAt
+        );
 }
