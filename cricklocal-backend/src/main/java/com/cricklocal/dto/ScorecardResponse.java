@@ -10,6 +10,8 @@ public class ScorecardResponse {
 
     private String status;
 
+    private String seriesName;
+
     private List<InningsScorecardResponse> innings;
 
     private MatchResultResponse result;
@@ -36,6 +38,14 @@ public class ScorecardResponse {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public String getSeriesName() {
+        return seriesName;
+    }
+
+    public void setSeriesName(String seriesName) {
+        this.seriesName = seriesName;
     }
 
     public List<InningsScorecardResponse> getInnings() {

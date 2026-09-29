@@ -17,6 +17,9 @@ public class FallOfWicketResponse {
     private Integer overNumber;
     private Integer ballInOver;
 
+    private Long bowlerId;
+    private String bowlerName;
+    
     private WicketType wicketType;
 
     private Long deliveryId;
@@ -59,6 +62,22 @@ public class FallOfWicketResponse {
 
     public void setDismissedPlayerName(String dismissedPlayerName) {
         this.dismissedPlayerName = dismissedPlayerName;
+    }
+
+    public Long getBowlerId() {
+        return bowlerId;
+    }
+
+    public void setBowlerId(Long bowlerId) {
+        this.bowlerId = bowlerId;
+    }
+
+    public String getBowlerName() {
+        return bowlerName;
+    }
+
+    public void setBowlerName(String bowlerName) {
+        this.bowlerName = bowlerName;
     }
 
     public Integer getScore() {

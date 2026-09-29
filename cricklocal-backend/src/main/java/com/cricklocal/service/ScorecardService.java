@@ -65,6 +65,12 @@ public class ScorecardService {
 
         response.setMatchId(match.getId());
         response.setMatchName(match.getName());
+
+        if (match.getSeries() != null) {
+                response.setSeriesName(
+                        match.getSeries().getName());
+        }
+
         response.setStatus(match.getStatus().name());
 
         List<InningsScorecardResponse> inningsResponses =

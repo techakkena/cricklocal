@@ -52,6 +52,16 @@ public class MatchLineupController {
         );
     }
 
+    @GetMapping("/{matchId}/lineup/team/{teamId}/finalized")
+    public PlayingXIResponse getFinalizedPlayingXI(
+            @PathVariable Long matchId,
+            @PathVariable Long teamId) {
+
+        return matchLineupService.getFinalizedPlayingXI(
+                matchId,
+                teamId);
+    }
+
     @PostMapping("/{matchId}/lineup/team/{teamId}/finalize")
     public PlayingXIResponse finalizePlayingXI(
             @PathVariable Long matchId,

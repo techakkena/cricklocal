@@ -20,6 +20,16 @@ public class GlobalExceptionHandler {
                 exception.getMessage());
     }
 
+    @ExceptionHandler(ForbiddenException.class)
+    @ResponseStatus(HttpStatus.FORBIDDEN)
+    public ErrorResponse handleForbidden(
+            ForbiddenException exception) {
+
+        return new ErrorResponse(
+                HttpStatus.FORBIDDEN.value(),
+                exception.getMessage());
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ErrorResponse handleIllegalArgument(
@@ -49,8 +59,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
-    public ErrorResponse handleGenericException(
-            Exception exception) {
+    public ErrorResponse handleGenericException(Exception exception) {
+        exception.printStackTrace();
 
         return new ErrorResponse(
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),

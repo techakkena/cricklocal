@@ -2,6 +2,9 @@ package com.cricklocal.service;
 
 import com.cricklocal.dto.PlayerImportError;
 import com.cricklocal.dto.PlayerImportResponse;
+import com.cricklocal.dto.PlayerRegistrationImportResponse;
+import com.cricklocal.entity.PlayerRegistrationInvitation;
+import com.cricklocal.entity.User;
 import com.cricklocal.entity.Player;
 import com.cricklocal.enums.BattingStyle;
 import com.cricklocal.enums.BowlingStyle;
@@ -37,9 +40,15 @@ public class PlayerImportService {
 
     private final PlayerRepository playerRepository;
     private final DataFormatter dataFormatter = new DataFormatter();
+    private final PlayerRegistrationInvitationService playerRegistrationInvitationService;
 
-    public PlayerImportService(PlayerRepository playerRepository) {
+    public PlayerImportService(
+            PlayerRepository playerRepository,
+            PlayerRegistrationInvitationService playerRegistrationInvitationService) {
+
         this.playerRepository = playerRepository;
+        this.playerRegistrationInvitationService =
+                playerRegistrationInvitationService;
     }
 
     @Transactional(readOnly = true)
@@ -53,7 +62,15 @@ public class PlayerImportService {
     }
 
     @Transactional
-    public PlayerImportResponse importExcel(MultipartFile file) {
+    public PlayerImportResponse importExcel(
+            MultipartFile file,
+            User invitedBy) {
+
+        if (invitedBy == null) {
+            throw new IllegalArgumentException(
+                    "Importing admin user is required");
+        }
+
         ParsedPlayerImport parsed = parseAndValidate(file);
 
         if (!parsed.errors().isEmpty()) {
@@ -79,12 +96,37 @@ public class PlayerImportService {
             players.add(player);
         }
 
-        playerRepository.saveAll(players);
+            List<Player> savedPlayers =
+                    playerRepository.saveAll(players);
+
+            List<PlayerRegistrationImportResponse> registrations =
+                    new ArrayList<>();
+
+            for (Player player : savedPlayers) {
+
+                PlayerRegistrationInvitation invitation =
+                        playerRegistrationInvitationService.createInvitation(
+                                player,
+                                invitedBy
+                        );
+
+                registrations.add(
+                        new PlayerRegistrationImportResponse(
+                                player.getId(),
+                                player.getDisplayName(),
+                                player.getRegistrationStatus().name(),
+                                invitation.getStatus().name(),
+                                invitation.getToken()
+                        )
+                );
+            }
 
         return new PlayerImportResponse(
                 parsed.totalRows(),
-                players.size(),
-                List.of());
+                savedPlayers.size(),
+                List.of(),
+                registrations
+        );
     }
 
     private ParsedPlayerImport parseAndValidate(MultipartFile file) {

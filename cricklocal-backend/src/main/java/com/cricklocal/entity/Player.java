@@ -3,6 +3,7 @@ package com.cricklocal.entity;
 import com.cricklocal.enums.BattingStyle;
 import com.cricklocal.enums.BowlingStyle;
 import com.cricklocal.enums.PlayerRole;
+import com.cricklocal.enums.PlayerRegistrationStatus;
 import jakarta.persistence.*;
 import java.time.Instant;
 
@@ -37,6 +38,15 @@ public class Player {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private PlayerRole role;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private PlayerRegistrationStatus registrationStatus =
+            PlayerRegistrationStatus.PENDING;
+
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", unique = true)
+    private User user;
 
     @Column(nullable = false)
     private Boolean active = true;
@@ -107,6 +117,23 @@ public class Player {
 
     public void setRole(PlayerRole role) {
         this.role = role;
+    }
+
+        public PlayerRegistrationStatus getRegistrationStatus() {
+        return registrationStatus;
+    }
+
+    public void setRegistrationStatus(
+            PlayerRegistrationStatus registrationStatus) {
+        this.registrationStatus = registrationStatus;
+    }
+
+    public User getUser() {
+        return user;
+    }
+
+    public void setUser(User user) {
+        this.user = user;
     }
 
     public Boolean getActive() {

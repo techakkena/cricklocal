@@ -2,6 +2,7 @@ package com.cricklocal.service;
 
 import com.cricklocal.dto.InningsResponse;
 import com.cricklocal.dto.StartInningsRequest;
+import com.cricklocal.enums.MatchStatus;
 import com.cricklocal.entity.Innings;
 import com.cricklocal.entity.Match;
 import com.cricklocal.entity.Team;
@@ -11,6 +12,7 @@ import com.cricklocal.repository.InningsRepository;
 import com.cricklocal.repository.MatchRepository;
 import com.cricklocal.repository.MatchTeamRepository;
 import com.cricklocal.repository.TeamRepository;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -161,6 +163,11 @@ public class InningsService {
 
         Innings savedInnings =
                 inningsRepository.save(innings);
+        
+        if (match.getStatus() == MatchStatus.SCHEDULED) {
+                match.setStatus(MatchStatus.LIVE);
+                matchRepository.save(match);
+        }
 
         return toResponse(savedInnings);
     }

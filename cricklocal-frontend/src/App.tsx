@@ -7,11 +7,23 @@ import NotFound from "./pages/OtherPage/NotFound";
 import Home from "./pages/Dashboard/Home";
 import Teams from "./pages/Teams";
 import Players from "./pages/Players";
+import PlayerRegistrations from "./pages/PlayerRegistrations";
 import Series from "./pages/Series";
+import Matches from "./pages/Matches";
 import PlaceholderPage from "./pages/PlaceholderPage";
+import MatchPreparation from "./pages/MatchPreparation";
+import ScoreOperator from "./pages/ScoreOperator";
+import ScorecardDetails from "./pages/ScorecardDetails";
+import PlayerRegistration from "./pages/AuthPages/PlayerRegistration";
+import LoginSuccess from "./pages/AuthPages/LoginSuccess";
+import PlayerRegistrationConfirm from "./pages/AuthPages/PlayerRegistrationConfirm";
+import { AuthProvider } from "./context/AuthContext";
+import AdminRoute from "./components/auth/AdminRoute";
+
 
 export default function App() {
   return (
+    <AuthProvider>
     <Router>
       <ScrollToTop />
 
@@ -22,16 +34,19 @@ export default function App() {
           {/* Manage */}
           <Route path="/teams" element={<Teams />} />
           <Route path="/players" element={<Players />} />
-          <Route path="/series" element={<Series />} />
-          <Route
-            path="/matches"
-            element={
-              <PlaceholderPage
-                title="Matches"
-                description="Create, schedule, and manage matches."
-              />
-            }
+          <Route path="/player-registrations" 
+          element={
+            <AdminRoute>
+                <PlayerRegistrations />
+            </AdminRoute>
+           }
           />
+          <Route path="/series" element={<Series />} />
+          <Route path="/matches" element={<Matches />} />
+          <Route path="/matches/:matchId" element={<MatchPreparation />} />
+          <Route path="/score/match/:matchId" element={<ScoreOperator />} />
+          <Route path="/scorecards/:matchId" element={<ScorecardDetails />}/>
+          
 
           {/* Match Center */}
           <Route
@@ -162,12 +177,16 @@ export default function App() {
         </Route>
 
         {/* Authentication */}
-        <Route path="/signin" element={<SignIn />} />
-        <Route path="/signup" element={<SignUp />} />
+<Route path="/signin" element={<SignIn />} />
+<Route path="/signup" element={<SignUp />} />
+<Route path="/login/success" element={<LoginSuccess />} />
+<Route path="/player-registration/:token" element={<PlayerRegistration />} />
+<Route path="/player-registration/confirm/:token" element={<PlayerRegistrationConfirm />} />
 
         {/* Fallback */}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </Router>
+     </AuthProvider>
   );
 }

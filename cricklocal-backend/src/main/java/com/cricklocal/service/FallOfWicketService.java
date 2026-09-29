@@ -5,7 +5,6 @@ import com.cricklocal.entity.Delivery;
 import com.cricklocal.entity.FallOfWicket;
 import com.cricklocal.entity.Innings;
 import com.cricklocal.entity.Player;
-import com.cricklocal.enums.WicketType;
 import com.cricklocal.repository.FallOfWicketRepository;
 import org.springframework.stereotype.Service;
 
@@ -32,8 +31,12 @@ public class FallOfWicketService {
                 new FallOfWicket();
 
         fallOfWicket.setInnings(innings);
-        fallOfWicket.setWicketNumber(wicketNumber);
-        fallOfWicket.setDismissedPlayer(dismissedPlayer);
+
+        fallOfWicket.setWicketNumber(
+                wicketNumber);
+
+        fallOfWicket.setDismissedPlayer(
+                dismissedPlayer);
 
         fallOfWicket.setScore(
                 innings.getTotalRuns());
@@ -47,9 +50,11 @@ public class FallOfWicketService {
         fallOfWicket.setWicketType(
                 delivery.getWicketType());
 
-        fallOfWicket.setDelivery(delivery);
+        fallOfWicket.setDelivery(
+                delivery);
 
-        return fallOfWicketRepository.save(fallOfWicket);
+        return fallOfWicketRepository.save(
+                fallOfWicket);
     }
 
     public List<FallOfWicket> getByInnings(
@@ -66,7 +71,8 @@ public class FallOfWicketService {
         FallOfWicketResponse response =
                 new FallOfWicketResponse();
 
-        response.setId(fallOfWicket.getId());
+        response.setId(
+                fallOfWicket.getId());
 
         response.setInningsId(
                 fallOfWicket.getInnings().getId());
@@ -95,9 +101,22 @@ public class FallOfWicketService {
         response.setWicketType(
                 fallOfWicket.getWicketType());
 
-        if (fallOfWicket.getDelivery() != null) {
+        Delivery delivery =
+                fallOfWicket.getDelivery();
+
+        if (delivery != null) {
+
             response.setDeliveryId(
-                    fallOfWicket.getDelivery().getId());
+                    delivery.getId());
+
+            if (delivery.getBowler() != null) {
+
+                response.setBowlerId(
+                        delivery.getBowler().getId());
+
+                response.setBowlerName(
+                        delivery.getBowler().getDisplayName());
+            }
         }
 
         return response;

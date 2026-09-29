@@ -43,7 +43,7 @@ public interface MatchLineupRepository
     List<MatchLineup> findByMatch(Match match);
 
     List<MatchLineup> findByMatchAndTeam(
-            Match match,
+            Match match,        
             Team team
     );
 
@@ -88,4 +88,22 @@ public interface MatchLineupRepository
                 Match match,
                 java.time.Instant scheduledAt
         );
+   
+    @Query("""
+        select count(ml) > 0
+        from MatchLineup ml
+        where ml.team = :team
+        and ml.player = :player
+        and ml.playing = true
+        and exists (
+                select pxi.id
+                from PlayingXI pxi
+                where pxi.match = ml.match
+                and pxi.team = ml.team
+        )
+        """)
+        boolean existsByTeamAndPlayerInFinalizedPlayingXI(
+                Team team,
+                Player player
+        );   
 }

@@ -1,8 +1,12 @@
 import { apiGet, apiPost } from "./apiClient";
 import type {
+  AddPlayerToMatchRequest,
   InningsResponse,
+  MatchLineupResponse,
   MatchResponse,
+  PlayingXIResponse,
   ScorecardResponse,
+  StartInningsRequest,
 } from "./types";
 
 export interface CreateMatchRequest {
@@ -32,14 +36,71 @@ export function createMatch(
   return apiPost<MatchResponse>("/api/matches", request);
 }
 
+export function startMatchInnings(
+    matchId: number,
+    request: StartInningsRequest,
+  ): Promise<InningsResponse> {
+    return apiPost<InningsResponse>(
+      `/api/matches/${matchId}/innings`,
+      request,
+    );
+}
+
 export function getMatchInnings(matchId: number): Promise<InningsResponse[]> {
   return apiGet<InningsResponse[]>(`/api/matches/${matchId}/innings`);
 }
+
 
 export function getMatchScorecard(
   matchId: number,
 ): Promise<ScorecardResponse> {
   return apiGet<ScorecardResponse>(
     `/api/matches/${matchId}/scorecard`,
+  );
+}
+
+export function getMatchLineup(
+  matchId: number,
+): Promise<MatchLineupResponse[]> {
+  return apiGet<MatchLineupResponse[]>(
+    `/api/matches/${matchId}/lineup`,
+  );
+}
+
+export function getTeamMatchLineup(
+  matchId: number,
+  teamId: number,
+): Promise<MatchLineupResponse[]> {
+  return apiGet<MatchLineupResponse[]>(
+    `/api/matches/${matchId}/lineup/team/${teamId}`,
+  );
+}
+
+export function getFinalizedPlayingXI(
+  matchId: number,
+  teamId: number,
+): Promise<PlayingXIResponse> {
+  return apiGet<PlayingXIResponse>(
+    `/api/matches/${matchId}/lineup/team/${teamId}/finalized`,
+  );
+}
+
+export function addPlayerToMatch(
+  matchId: number,
+  request: AddPlayerToMatchRequest,
+): Promise<MatchLineupResponse> {
+  return apiPost<MatchLineupResponse>(
+    `/api/matches/${matchId}/lineup`,
+    request,
+  );
+}
+
+export function finalizePlayingXI(
+  matchId: number,
+  teamId: number,
+): Promise<PlayingXIResponse> {
+  return apiPost<PlayingXIResponse>(
+    `/api/matches/${matchId}/lineup/team/${teamId}/finalize`,
+    {},
   );
 }

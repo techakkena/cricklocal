@@ -13,11 +13,19 @@ import {
 import {
   createTeam,
   getTeams,
+  getTeamPlayers,
+  getTeamCaptain,
+  addPlayerToTeam,
+  removePlayerFromTeam,
+  setTeamCaptain,
   importTeamsExcel,
   validateTeamExcel,
   type TeamImportResponse,
+  type TeamRosterPlayerResponse,
+  type TeamCaptainResponse,
 } from "../api/teamsApi";
-import type { TeamResponse } from "../api/types";
+import { getPlayers } from "../api/playersApi";
+import type { PlayerResponse, TeamResponse } from "../api/types";
 
 function formatCreatedDate(createdAt: string) {
   const date = new Date(createdAt);
@@ -50,6 +58,23 @@ export default function Teams() {
   const [validation, setValidation] = useState<TeamImportResponse | null>(
     null,
   );
+
+  const [isPlayersOpen, setIsPlayersOpen] = useState(false);
+  const [selectedTeam, setSelectedTeam] = useState<TeamResponse | null>(null);
+  const [teamPlayers, setTeamPlayers] = useState<
+    TeamRosterPlayerResponse[]
+  >([]);
+  const [allPlayers, setAllPlayers] = useState<PlayerResponse[]>([]);
+  const [playersLoading, setPlayersLoading] = useState(false);
+  const [refreshingRoster, setRefreshingRoster] = useState(false);
+  const [playersError, setPlayersError] = useState("");
+  const [addingPlayer, setAddingPlayer] = useState(false);
+  const [settingCaptain, setSettingCaptain] = useState(false);
+  const [removingPlayerId, setRemovingPlayerId] = useState<number | null>(null);
+  const [playerActionError, setPlayerActionError] = useState("");
+  const [selectedPlayerId, setSelectedPlayerId] = useState("");
+  const [jerseyNumber, setJerseyNumber] = useState("");
+  const [captain, setCaptain] = useState<TeamCaptainResponse | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -107,6 +132,214 @@ export default function Teams() {
       cancelled = true;
     };
   }, []);
+
+  async function openPlayersModal(team: TeamResponse) {
+    try {
+      setSelectedTeam(team);
+      setIsPlayersOpen(true);
+      setPlayersLoading(true);
+      setPlayersError("");
+      setPlayerActionError("");
+      setSelectedPlayerId("");
+      setJerseyNumber("");
+
+      const [roster, players] = await Promise.all([
+        getTeamPlayers(team.id),
+        getPlayers(),
+      ]);
+
+      setTeamPlayers(roster);
+      setAllPlayers(players);
+
+      try {
+        const currentCaptain = await getTeamCaptain(team.id);
+        setCaptain(currentCaptain);
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "";
+
+        if (message === "Team captain is not assigned") {
+          setCaptain(null);
+        } else {
+          throw err;
+        }
+      }
+    } catch (err) {
+      setPlayersError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load team players.",
+      );
+    } finally {
+      setPlayersLoading(false);
+    }
+  }
+
+  function closePlayersModal() {
+    if (playersLoading || addingPlayer || settingCaptain) {
+      return;
+    }
+
+    setIsPlayersOpen(false);
+    setSelectedTeam(null);
+    setTeamPlayers([]);
+    setPlayersError("");
+    setPlayerActionError("");
+    setSelectedPlayerId("");
+    setJerseyNumber("");
+    setCaptain(null);
+  }
+
+  async function refreshRoster() {
+    if (!selectedTeam || refreshingRoster) {
+      return;
+    }
+
+    try {
+      setRefreshingRoster(true);
+      setPlayerActionError("");
+
+      const roster = await getTeamPlayers(selectedTeam.id);
+      setTeamPlayers(roster);
+
+      if (captain) {
+        const captainStillActive = roster.some(
+          (player) =>
+            player.playerId === captain.playerId && player.active,
+        );
+
+        if (!captainStillActive) {
+          setCaptain(null);
+        }
+      }
+    } catch (err) {
+      setPlayerActionError(
+        err instanceof Error ? err.message : "Unable to refresh team players.",
+      );
+    } finally {
+      setRefreshingRoster(false);
+    }
+  }
+
+  async function handleAddPlayerToTeam() {
+    if (!selectedTeam || !selectedPlayerId) {
+      setPlayerActionError("Please select a player.");
+      return;
+    }
+
+    if (jerseyNumber.trim() === "") {
+      setPlayerActionError("Please enter a jersey number.");
+      return;
+    }
+
+    const number = Number(jerseyNumber);
+
+    if (!Number.isInteger(number) || number < 0 || number > 99) {
+      setPlayerActionError(
+        "Jersey number must be a whole number from 0 to 99.",
+      );
+      return;
+    }
+
+    try {
+      setAddingPlayer(true);
+      setPlayerActionError("");
+
+      await addPlayerToTeam(selectedTeam.id, Number(selectedPlayerId), {
+        jerseyNumber: number,
+      });
+
+      await refreshRoster();
+
+      setSelectedPlayerId("");
+      setJerseyNumber("");
+    } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Unable to add player to team.";
+
+        setPlayerActionError(message);
+
+        if (message.includes("Jersey number is already assigned")) {
+          window.alert(
+            `Duplicate jersey number\n\nJersey #${number} is already assigned to an active player.`,
+          );
+        }
+      } finally {
+      setAddingPlayer(false);
+    }
+  }
+
+  async function handleSetCaptain(playerId: number) {
+    if (!selectedTeam) {
+      return;
+    }
+
+    try {
+      setSettingCaptain(true);
+      setPlayerActionError("");
+
+      const response = await setTeamCaptain(selectedTeam.id, playerId);
+
+      setCaptain(response);
+      await refreshRoster();
+    } catch (err) {
+      setPlayerActionError(
+        err instanceof Error ? err.message : "Unable to set team captain.",
+      );
+    } finally {
+      setSettingCaptain(false);
+    }
+  }
+
+  async function handleRemovePlayer(playerId: number, displayName: string) {
+      if (!selectedTeam) {
+        return;
+      }
+
+      const confirmed = window.confirm(
+        `Remove ${displayName} from ${selectedTeam.name}?`,
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        setRemovingPlayerId(playerId);
+        setPlayerActionError("");
+
+        await removePlayerFromTeam(selectedTeam.id, playerId);
+
+        if (captain?.playerId === playerId) {
+          setCaptain(null);
+        }
+
+        await refreshRoster();
+      } catch (err) {
+        setPlayerActionError(
+          err instanceof Error
+            ? err.message
+            : "Unable to remove player from team.",
+        );
+      } finally {
+        setRemovingPlayerId(null);
+      }
+  }
+
+  const assignedPlayerIds = new Set(teamPlayers.map((player) => player.playerId));
+  const availablePlayers = allPlayers.filter(
+    (player) => !assignedPlayerIds.has(player.id) && player.active,
+  );
+
+  const selectedPlayer = allPlayers.find(
+  (player) => player.id === Number(selectedPlayerId),
+);
+
+const otherTeamsForSelectedPlayer = selectedPlayer?.teams.filter(
+  (team) => team.teamId !== selectedTeam?.id,
+) ?? [];
 
   function openCreateModal() {
     setCreateError("");
@@ -229,7 +462,9 @@ export default function Teams() {
     } catch (err) {
       setValidation(null);
       setImportError(
-        err instanceof Error ? err.message : "Unable to validate Excel file.",
+        err instanceof Error
+          ? err.message
+          : "Unable to validate Excel file.",
       );
     } finally {
       setValidating(false);
@@ -251,7 +486,6 @@ export default function Teams() {
       setImportError("");
 
       const response = await importTeamsExcel(selectedFile);
-
       setValidation(response);
 
       if (response.errors.length > 0) {
@@ -395,6 +629,12 @@ export default function Teams() {
                     >
                       Created
                     </TableCell>
+                    <TableCell
+                      isHeader
+                      className="px-5 py-3 text-start font-medium text-gray-500 text-theme-xs dark:text-gray-400"
+                    >
+                      Actions
+                    </TableCell>
                   </TableRow>
                 </TableHeader>
 
@@ -432,6 +672,16 @@ export default function Teams() {
                       <TableCell className="px-4 py-3 text-start text-gray-500 text-theme-sm dark:text-gray-400">
                         {formatCreatedDate(team.createdAt)}
                       </TableCell>
+
+                      <TableCell className="px-4 py-3 text-start">
+                        <button
+                          type="button"
+                          onClick={() => openPlayersModal(team)}
+                          className="inline-flex items-center justify-center rounded-lg border border-brand-500 px-3 py-2 text-xs font-medium text-brand-600 transition hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
+                        >
+                          Manage Players
+                        </button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -440,6 +690,159 @@ export default function Teams() {
           )}
         </div>
       </div>
+
+      <Modal
+        isOpen={isPlayersOpen}
+        onClose={closePlayersModal}
+        className="max-h-[90vh] max-w-[900px] overflow-hidden p-5 sm:p-8"
+      >
+        <div className="flex max-h-[calc(90vh-2rem)] min-h-0 flex-col pr-10">
+          <div className="shrink-0">
+            <h3 className="text-xl font-semibold text-gray-800 dark:text-white/90">
+              Manage Players
+            </h3>
+            {selectedTeam && (
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {selectedTeam.name} ({selectedTeam.shortName})
+              </p>
+            )}
+          </div>
+
+          <div className="mt-6 min-h-0 flex-1 overflow-y-auto pr-1">
+            <div className="space-y-6">
+              {playersError && (
+                <div className="rounded-xl border border-error-200 bg-error-50 p-4 text-sm text-error-600 dark:border-error-500/20 dark:bg-error-500/10 dark:text-error-400">
+                  {playersError}
+                </div>
+              )}
+              {playerActionError && (
+                <div className="rounded-xl border border-error-200 bg-error-50 p-4 text-sm text-error-600 dark:border-error-500/20 dark:bg-error-500/10 dark:text-error-400">
+                  {playerActionError}
+                </div>
+              )}
+
+              {playersLoading ? (
+                <div className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+                  Loading team players...
+                </div>
+              ) : (
+                <>
+                  <div className="rounded-xl border border-gray-200 p-4 dark:border-gray-800">
+                    <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Current Captain</p>
+                        <p className="mt-1 font-semibold text-gray-800 dark:text-white/90">
+                          {captain ? captain.displayName : "Not assigned"}
+                        </p>
+                      </div>
+                      {captain && (
+                        <Badge size="sm" color="success">Jersey #{captain.jerseyNumber}</Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-gray-200 p-4 dark:border-gray-800">
+                    <h4 className="font-semibold text-gray-800 dark:text-white/90">Assign Player</h4>
+                    <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                      Add an existing CricketLocal player to this team.
+                    </p>
+                    <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-[1fr_160px_auto]">
+                      <div>
+                        <label htmlFor="team-player-select" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Player</label>
+                        <select id="team-player-select" value={selectedPlayerId} onChange={(event) => setSelectedPlayerId(event.target.value)} disabled={addingPlayer} className="h-11 w-full rounded-lg border border-gray-300 bg-white px-4 text-sm text-gray-800 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90">
+                          <option value="">Select player</option>
+                          {availablePlayers.map((player) => (
+                            <option key={player.id} value={player.id}>{player.displayName}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="team-player-jersey" className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">Jersey #</label>
+                        <input id="team-player-jersey" type="number" min="0" max="99" value={jerseyNumber} onChange={(event) => setJerseyNumber(event.target.value)} disabled={addingPlayer} placeholder="0–99" className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90" />
+                      </div>
+                      <div className="flex items-end">
+                        <button type="button" onClick={handleAddPlayerToTeam} disabled={addingPlayer || removingPlayerId !== null || !selectedPlayerId || jerseyNumber.trim() === ""} className="h-11 w-full rounded-lg bg-brand-500 px-5 text-sm font-medium text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">
+                          {addingPlayer ? "Adding..." : "Add Player"}
+                        </button>
+                      </div>
+                    </div>
+                    {availablePlayers.length === 0 && (
+                      <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">All active global players are already assigned to this team.</p>
+                    )}
+                    {otherTeamsForSelectedPlayer.length > 0 && (
+                      <div className="mt-3 rounded-lg border border-warning-200 bg-warning-50 px-4 py-3 dark:border-warning-500/20 dark:bg-warning-500/10">
+                        <p className="text-sm font-medium text-warning-700 dark:text-warning-400">⚠ Player already registered with another team</p>
+                        <div className="mt-1 space-y-1">
+                          {otherTeamsForSelectedPlayer.map((team) => (
+                            <p key={team.teamId} className="text-xs text-warning-600 dark:text-warning-300">
+                              {team.teamName} ({team.shortName}){team.jerseyNumber !== null ? ` — Jersey #${team.jerseyNumber}` : ""}
+                            </p>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <div className="mb-3 flex items-center justify-between">
+                      <div>
+                        <h4 className="font-semibold text-gray-800 dark:text-white/90">Team Roster</h4>
+                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{teamPlayers.length} player{teamPlayers.length === 1 ? "" : "s"}</p>
+                      </div>
+                      <button type="button" onClick={refreshRoster} disabled={refreshingRoster || settingCaptain || addingPlayer || removingPlayerId !== null} className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/[0.03]">
+                        {refreshingRoster ? "Refreshing..." : "Refresh"}
+                      </button>
+                    </div>
+
+                    {teamPlayers.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-gray-300 p-8 text-center dark:border-gray-700">
+                        <p className="text-sm font-medium text-gray-700 dark:text-gray-300">No players assigned yet.</p>
+                      </div>
+                    ) : (
+                      <div className="max-h-[42vh] max-w-full overflow-auto rounded-xl border border-gray-200 dark:border-gray-800">
+                        <Table>
+                          <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
+                            <TableRow>
+                              <TableCell isHeader className="px-4 py-3 text-start text-xs font-medium text-gray-500 dark:text-gray-400">Player</TableCell>
+                              <TableCell isHeader className="px-4 py-3 text-start text-xs font-medium text-gray-500 dark:text-gray-400">Jersey</TableCell>
+                              <TableCell isHeader className="px-4 py-3 text-start text-xs font-medium text-gray-500 dark:text-gray-400">Status</TableCell>
+                              <TableCell isHeader className="px-4 py-3 text-start text-xs font-medium text-gray-500 dark:text-gray-400">Captain</TableCell>
+                              <TableCell isHeader className="px-4 py-3 text-start text-xs font-medium text-gray-500 dark:text-gray-400">Action</TableCell>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
+                            {teamPlayers.map((player) => {
+                              const isCaptain = captain?.playerId === player.playerId;
+                              return (
+                                <TableRow key={player.teamPlayerId}>
+                                  <TableCell className="px-4 py-3 text-start"><div><span className="block text-sm font-medium text-gray-800 dark:text-white/90">{player.displayName}</span><span className="block text-xs text-gray-500 dark:text-gray-400">Player #{player.playerId}</span></div></TableCell>
+                                  <TableCell className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">#{player.jerseyNumber}</TableCell>
+                                  <TableCell className="px-4 py-3"><Badge size="sm" color={player.active ? "success" : "error"}>{player.active ? "Active" : "Inactive"}</Badge></TableCell>
+                                  <TableCell className="px-4 py-3">{isCaptain ? <Badge size="sm" color="warning">Captain</Badge> : <span className="text-xs text-gray-500 dark:text-gray-400">—</span>}</TableCell>
+                                  <TableCell className="px-4 py-3"><div className="flex flex-wrap gap-2">
+                                    <button type="button" onClick={() => handleSetCaptain(player.playerId)} disabled={!player.active || isCaptain || settingCaptain || removingPlayerId !== null} className="rounded-lg border border-brand-500 px-3 py-2 text-xs font-medium text-brand-600 transition hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-brand-400 dark:hover:bg-brand-500/10">{isCaptain ? "Current Captain" : settingCaptain ? "Setting..." : "Make Captain"}</button>
+                                    <button type="button" onClick={() => handleRemovePlayer(player.playerId, player.displayName)} disabled={!player.active || settingCaptain || addingPlayer || removingPlayerId !== null} className="rounded-lg border border-error-500 px-3 py-2 text-xs font-medium text-error-600 transition hover:bg-error-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-error-400 dark:hover:bg-error-500/10">{removingPlayerId === player.playerId ? "Removing..." : "Remove"}</button>
+                                  </div></TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="shrink-0 flex justify-end pt-4">
+            <button type="button" onClick={closePlayersModal} disabled={playersLoading || addingPlayer || settingCaptain || removingPlayerId !== null || refreshingRoster} className="inline-flex h-11 items-center justify-center rounded-lg border border-gray-300 px-5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/[0.03]">
+              Close
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       <Modal
         isOpen={isCreateOpen}
@@ -626,7 +1029,7 @@ export default function Teams() {
                   {validation.totalRows === 1 ? "" : "s"} ready to import.
                 </div>
               ) : (
-                <div className="rounded-xl border border-error-200 bg-error-50 p-4 dark:border-error-500/20 dark:bg-error-500/10">
+                <div className="rounded-xl border border-error-200 bg-error-50 p-4 dark:border-error-500/20 dark:bg-error-500/10 dark:text-error-400">
                   <p className="text-sm font-medium text-error-700 dark:text-error-400">
                     Please fix the following Excel errors:
                   </p>

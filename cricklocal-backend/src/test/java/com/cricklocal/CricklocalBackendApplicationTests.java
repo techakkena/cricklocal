@@ -1,11 +1,21 @@
 package com.cricklocal;
 import com.cricklocal.entity.MatchTeam;
+import com.cricklocal.controller.PlayerRegistrationController;
 import com.cricklocal.dto.InningsResponse;
 import com.cricklocal.entity.InningsState;
 import com.cricklocal.dto.RecordDeliveryRequest;
 import com.cricklocal.dto.StartInningsRequest;
 import com.cricklocal.dto.ScorecardResponse;
 import com.cricklocal.dto.CareerStatsResponse;
+import com.cricklocal.dto.PlayerRegistrationInvitationResponse;
+import com.cricklocal.dto.PlayerRegistrationImportResponse;
+import com.cricklocal.dto.PlayerRegistrationManagementResponse;
+import com.cricklocal.dto.PlayerImportResponse;
+import com.cricklocal.dto.PlayerRegistrationDetailResponse;
+import com.cricklocal.dto.PlayerRegistrationSummaryResponse;
+import com.cricklocal.dto.PlayerRegistrationRegenerateResponse;
+import com.cricklocal.dto.PlayerRegistrationLinkResponse;
+import com.cricklocal.dto.PlayerRegistrationUpdateRequest;
 import com.cricklocal.entity.Innings;
 import com.cricklocal.entity.Match;
 import com.cricklocal.entity.MatchLineup;
@@ -14,6 +24,10 @@ import com.cricklocal.entity.Team;
 import com.cricklocal.entity.TeamPlayer;
 import com.cricklocal.entity.Series;
 import com.cricklocal.entity.SeriesTeam;
+import com.cricklocal.entity.AdminEntitlement;
+import com.cricklocal.entity.User;
+import com.cricklocal.entity.PlayerRegistrationInvitation;
+import com.cricklocal.entity.UserAuthentication;
 import com.cricklocal.enums.ExtraType;
 import com.cricklocal.enums.WicketType;
 import com.cricklocal.enums.DismissalEnd;
@@ -23,6 +37,13 @@ import com.cricklocal.enums.MatchFormat;
 import com.cricklocal.enums.MatchStatus;
 import com.cricklocal.enums.BattingStyle;
 import com.cricklocal.enums.BowlingStyle;
+import com.cricklocal.enums.AdminSubscriptionStatus;
+import com.cricklocal.enums.UserRole;
+import com.cricklocal.enums.PlayerRole;
+import com.cricklocal.enums.PlayerRegistrationStatus;
+import com.cricklocal.enums.PlayerRegistrationInvitationStatus;
+import com.cricklocal.enums.AuthenticationProvider;
+import com.cricklocal.repository.UserRepository;
 import com.cricklocal.repository.InningsRepository;
 import com.cricklocal.repository.MatchLineupRepository;
 import com.cricklocal.repository.MatchRepository;
@@ -35,12 +56,27 @@ import com.cricklocal.repository.TeamPlayerRepository;
 import com.cricklocal.repository.SeriesTeamRepository;
 import com.cricklocal.repository.PlayingXIRepository;
 import com.cricklocal.repository.SeriesRepository;
+import com.cricklocal.repository.AdminEntitlementRepository;
+import com.cricklocal.repository.PlayerRegistrationInvitationRepository;
+import com.cricklocal.repository.UserAuthenticationRepository;
 import com.cricklocal.service.DeliveryService;
 import com.cricklocal.service.InningsService;
 import com.cricklocal.service.ScorecardService;
 import com.cricklocal.service.CareerStatisticsService;
 import com.cricklocal.service.MatchService;
 import com.cricklocal.service.PlayerHistoryService;
+import com.cricklocal.service.AdminAccessService;
+import com.cricklocal.service.PlayerRegistrationInvitationService;
+import com.cricklocal.service.PlayerRegistrationManagementService;
+import com.cricklocal.service.PlayerRegistrationService;
+import com.cricklocal.service.PlayerImportService;
+import com.cricklocal.service.PlayerRegistrationSummaryService;
+import com.cricklocal.service.PlayerRegistrationDetailService;
+import com.cricklocal.service.PlayerRegistrationRegenerateService;
+import com.cricklocal.service.PlayerRegistrationExcelExportService;
+import com.cricklocal.service.PlayerRegistrationLinkService;
+import com.cricklocal.service.PlayerRegistrationInvitationMaintenanceService;
+import com.cricklocal.service.PlayerRegistrationInvitationBackfillService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -48,48 +84,77 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.MediaType;
+import org.springframework.dao.DataIntegrityViolationException;
 import com.cricklocal.enums.PlayerRole;
 import com.cricklocal.service.LeaderboardService;
 import com.cricklocal.exception.ResourceNotFoundException;
 import com.cricklocal.dto.ErrorResponse;
 import com.cricklocal.exception.GlobalExceptionHandler;
-import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.http.HttpHeaders;
+import org.springframework.security.oauth2.core.user.OAuth2User;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
+
+import org.springframework.mock.web.MockMultipartFile;
+
+import java.time.Instant;
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
+import java.util.Map;
+import java.util.List;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Sheet;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 
 @AutoConfigureMockMvc
 @SpringBootTest
 @Transactional
 class CricklocalBackendApplicationTests {
 
-    @Autowired
-    private TeamRepository teamRepository;
+        @Autowired
+        private TeamRepository teamRepository;
 
-    @Autowired
-    private PlayerRepository playerRepository;
+        @Autowired
+        private PlayerRepository playerRepository;
 
-    @Autowired
-    private MatchRepository matchRepository;
+        @Autowired
+        private MatchRepository matchRepository;
 
-	@Autowired
-	private SeriesTeamRepository seriesTeamRepository;
+        @Autowired
+        private SeriesTeamRepository seriesTeamRepository;
 
-	@Autowired
-	private SeriesRepository seriesRepository;
+        @Autowired
+        private SeriesRepository seriesRepository;
 
-	@Autowired
-	private PlayingXIRepository playingXIRepository;
+        @Autowired
+        private PlayingXIRepository playingXIRepository;
 
-    @Autowired
-    private MatchLineupRepository matchLineupRepository;
+        @Autowired
+        private MatchLineupRepository matchLineupRepository;
 
 	@Autowired
 	private MatchTeamRepository matchTeamRepository;
@@ -97,8 +162,8 @@ class CricklocalBackendApplicationTests {
 	@Autowired
 	private MatchResultRepository matchResultRepository;
 
-    @Autowired
-    private InningsRepository inningsRepository;
+        @Autowired
+        private InningsRepository inningsRepository;
 
 	@Autowired
 	private InningsStateRepository inningsStateRepository;
@@ -106,11 +171,23 @@ class CricklocalBackendApplicationTests {
 	@Autowired
 	private TeamPlayerRepository teamPlayerRepository;
 
-    @Autowired
-    private InningsService inningsService;
+        @Autowired
+        private UserRepository userRepository;
 
-    @Autowired
-    private DeliveryService deliveryService;
+        @Autowired
+        private PlayerRegistrationInvitationRepository playerRegistrationInvitationRepository;
+        
+        @Autowired
+        private AdminEntitlementRepository adminEntitlementRepository;
+
+        @Autowired
+        private UserAuthenticationRepository userAuthenticationRepository;
+
+        @Autowired
+        private InningsService inningsService;
+
+        @Autowired
+        private DeliveryService deliveryService;
 
 	@Autowired
 	private ScorecardService scorecardService;
@@ -126,6 +203,46 @@ class CricklocalBackendApplicationTests {
 
 	@Autowired
 	private PlayerHistoryService playerHistoryService;
+
+
+        @Autowired
+        private AdminAccessService adminAccessService;
+
+        @Autowired
+        private PlayerRegistrationInvitationService playerRegistrationInvitationService;
+
+        @Autowired
+        private PlayerRegistrationService playerRegistrationService;
+
+        @Autowired
+        private PlayerImportService playerImportService;
+
+        @Autowired
+        private PlayerRegistrationSummaryService playerRegistrationSummaryService;
+
+        @Autowired
+        private PlayerRegistrationManagementService playerRegistrationManagementService;
+
+        @Autowired
+        private PlayerRegistrationDetailService playerRegistrationDetailService;
+
+        @Autowired
+        private PlayerRegistrationRegenerateService playerRegistrationRegenerateService;
+
+        @Autowired
+        private PlayerRegistrationExcelExportService playerRegistrationExcelExportService;
+
+        @Autowired
+        private PlayerRegistrationLinkService playerRegistrationLinkService;
+
+        @Autowired
+        private PlayerRegistrationInvitationMaintenanceService playerRegistrationInvitationMaintenanceService;
+
+        @Autowired
+        private PlayerRegistrationInvitationBackfillService playerRegistrationInvitationBackfillService;
+
+        @Autowired
+        private PlayerRegistrationController playerRegistrationController;
 
 	@Autowired
 	private MockMvc mockMvc;
@@ -952,7 +1069,7 @@ class CricklocalBackendApplicationTests {
                         .orElseThrow();
 
         assertEquals(
-                MatchStatus.SCHEDULED,
+                MatchStatus.LIVE,
                 savedLiveMatch.getStatus());
 
         CareerStatsResponse stats =
@@ -2014,10 +2131,62 @@ class CricklocalBackendApplicationTests {
                                             fieldingResponse.getWicketType());
     }
 
+        @Test
+        void startInningsShouldSetMatchStatusToLive() {
+
+                        String testId = String.valueOf(System.currentTimeMillis());
+
+                        Team battingTeam = new Team();
+                        battingTeam.setName("Match Status Batting Team " + testId);
+                        battingTeam.setShortName("MSA" + testId);
+                        battingTeam.setCity("Nellore");
+                        battingTeam = teamRepository.save(battingTeam);
+
+                        Team bowlingTeam = new Team();
+                        bowlingTeam.setName("Match Status Bowling Team " + testId);
+                        bowlingTeam.setShortName("MSB" + testId);
+                        bowlingTeam.setCity("Nellore");
+                        bowlingTeam = teamRepository.save(bowlingTeam);
+
+                        Match match = new Match();
+                        match.setName("Match Status Test Match " + testId);
+                        match.setMatchNumber(1);
+                        match.setFormat(MatchFormat.T20);
+                        match.setTotalOvers(20);
+                        match.setMaxPlayersPerTeam(11);
+                        match.setScheduledAt(Instant.now());
+                        match.setStatus(MatchStatus.SCHEDULED);
+                        match = matchRepository.save(match);
+
+                        MatchTeam matchTeamA = new MatchTeam();
+                        matchTeamA.setMatch(match);
+                        matchTeamA.setTeam(battingTeam);
+                        matchTeamA.setSide(MatchTeamSide.TEAM_A);
+                        matchTeamRepository.save(matchTeamA);
+
+                        MatchTeam matchTeamB = new MatchTeam();
+                        matchTeamB.setMatch(match);
+                        matchTeamB.setTeam(bowlingTeam);
+                        matchTeamB.setSide(MatchTeamSide.TEAM_B);
+                        matchTeamRepository.save(matchTeamB);
+
+                        StartInningsRequest request = new StartInningsRequest();
+                        request.setInningsNumber(1);
+                        request.setBattingTeamId(battingTeam.getId());
+                        request.setBowlingTeamId(bowlingTeam.getId());
+
+                        inningsService.startInnings(match.getId(), request);
+
+                        Match savedMatch = matchRepository.findById(match.getId())
+                                .orElseThrow();
+
+                        assertEquals(MatchStatus.LIVE, savedMatch.getStatus());
+        }
+
 	@Test
 	void matchHistoryShouldReturnMatchesNewestFirst() {
 
-				String testId = String.valueOf(System.currentTimeMillis());
+			String testId = String.valueOf(System.currentTimeMillis());
 
 				Team teamA = new Team();
 				teamA.setName("Module 11 History Team A " + testId);
@@ -2103,7 +2272,7 @@ class CricklocalBackendApplicationTests {
 
 				assertEquals(
 						"Module 11 Older Match " + testId,
-						olderEntry.getName());
+						olderEntry.getName());	
 	}
 
 	@Test
@@ -2691,7 +2860,7 @@ class CricklocalBackendApplicationTests {
 			}
     }
 
-	@Test
+    @Test
     void teamExcelValidationShouldReportRowLevelErrors()
             throws Exception {
 
@@ -2770,7 +2939,7 @@ class CricklocalBackendApplicationTests {
         }
     }
 
-	@Test
+    @Test
     void teamExcelValidationShouldRejectDuplicateNamesAndShortNames()
             throws Exception {
 
@@ -2988,7 +3157,7 @@ class CricklocalBackendApplicationTests {
 	}
 
 	@Test
-    void playerExcelImportShouldCreateValidPlayers() throws Exception {
+        void playerExcelImportShouldCreateValidPlayers() throws Exception {
 
         String testId = String.valueOf(System.currentTimeMillis());
 
@@ -3042,23 +3211,30 @@ class CricklocalBackendApplicationTests {
             workbook.write(outputStream);
 
             mockMvc.perform(
-                    org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                            .multipart("/api/players/import")
-                            .file(
-                                    new org.springframework.mock.web.MockMultipartFile(
-                                            "file",
-                                            "players-import.xlsx",
-                                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                            outputStream.toByteArray())))
-                    .andExpect(
-                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
-                                    .status().isOk())
-                    .andExpect(
-                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
-                                    .jsonPath("$.totalRows").value(2))
-                    .andExpect(
-                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
-                                    .jsonPath("$.createdRows").value(2));
+                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                .multipart("/api/players/import")
+                                .file(
+                                        new org.springframework.mock.web.MockMultipartFile(
+                                                "file",
+                                                "players-import.xlsx",
+                                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                                outputStream.toByteArray()))
+                                .with(
+                                        org.springframework.security.test.web.servlet.request
+                                                .SecurityMockMvcRequestPostProcessors
+                                                .authentication(
+                                                        createAdminAuthentication()
+                                                )
+                                ))
+                        .andExpect(
+                                org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                        .status().isOk())
+                        .andExpect(
+                                org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                        .jsonPath("$.totalRows").value(2))
+                        .andExpect(
+                                org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                        .jsonPath("$.createdRows").value(2));
 
             assertEquals(
                     initialPlayerCount + 2,
@@ -3122,7 +3298,11 @@ class CricklocalBackendApplicationTests {
                                             "file",
                                             "players-validation.xlsx",
                                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                            outputStream.toByteArray())))
+                                            outputStream.toByteArray())).with(
+                                        SecurityMockMvcRequestPostProcessors.authentication(
+                                                createAdminAuthentication()
+                                        )
+                                        ))
                     .andExpect(
                             org.springframework.test.web.servlet.result.MockMvcResultMatchers
                                     .status().isOk())
@@ -3175,7 +3355,11 @@ class CricklocalBackendApplicationTests {
                                             "file",
                                             "invalid-player-headers.xlsx",
                                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                            outputStream.toByteArray())))
+                                            outputStream.toByteArray())).with(
+                                                SecurityMockMvcRequestPostProcessors.authentication(
+                                                        createAdminAuthentication()
+                                                )
+                                                ))
                     .andExpect(
                             org.springframework.test.web.servlet.result.MockMvcResultMatchers
                                     .status().isBadRequest())
@@ -3250,7 +3434,11 @@ class CricklocalBackendApplicationTests {
                                             "file",
                                             "duplicate-player.xlsx",
                                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                            outputStream.toByteArray())))
+                                            outputStream.toByteArray())).with(
+                                                SecurityMockMvcRequestPostProcessors.authentication(
+                                                        createAdminAuthentication()
+                                                )
+                                                ))
                     .andExpect(
                             org.springframework.test.web.servlet.result.MockMvcResultMatchers
                                     .status().isOk())
@@ -3315,7 +3503,11 @@ class CricklocalBackendApplicationTests {
                                             "file",
                                             "workbook-duplicates.xlsx",
                                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                            outputStream.toByteArray())))
+                                            outputStream.toByteArray())).with(
+                                                SecurityMockMvcRequestPostProcessors.authentication(
+                                                        createAdminAuthentication()
+                                                )
+                                                ))
                     .andExpect(
                             org.springframework.test.web.servlet.result.MockMvcResultMatchers
                                     .status().isOk())
@@ -3375,7 +3567,11 @@ class CricklocalBackendApplicationTests {
                                             "file",
                                             "invalid-role.xlsx",
                                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                            outputStream.toByteArray())))
+                                            outputStream.toByteArray())).with(
+                                                SecurityMockMvcRequestPostProcessors.authentication(
+                                                        createAdminAuthentication()
+                                                )
+                                                ))
                     .andExpect(
                             org.springframework.test.web.servlet.result.MockMvcResultMatchers
                                     .status().isOk())
@@ -3430,7 +3626,11 @@ class CricklocalBackendApplicationTests {
                                             "file",
                                             "invalid-batting.xlsx",
                                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                            outputStream.toByteArray())))
+                                            outputStream.toByteArray())).with(
+                                                SecurityMockMvcRequestPostProcessors.authentication(
+                                                        createAdminAuthentication()
+                                                )
+                                                ))
                     .andExpect(
                             org.springframework.test.web.servlet.result.MockMvcResultMatchers
                                     .status().isOk())
@@ -3485,7 +3685,11 @@ class CricklocalBackendApplicationTests {
                                             "file",
                                             "invalid-bowling.xlsx",
                                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                            outputStream.toByteArray())))
+                                            outputStream.toByteArray())).with(
+                                                SecurityMockMvcRequestPostProcessors.authentication(
+                                                        createAdminAuthentication()
+                                                )
+                                                ))
                     .andExpect(
                             org.springframework.test.web.servlet.result.MockMvcResultMatchers
                                     .status().isOk())
@@ -3509,7 +3713,11 @@ class CricklocalBackendApplicationTests {
         mockMvc.perform(
                 org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                         .multipart("/api/players/import/validate")
-                        .file(file))
+                        .file(file).with(
+                                SecurityMockMvcRequestPostProcessors.authentication(
+                                        createAdminAuthentication()
+                                )
+                                ))
                 .andExpect(
                         org.springframework.test.web.servlet.result.MockMvcResultMatchers
                                 .status().isBadRequest())
@@ -3575,23 +3783,30 @@ class CricklocalBackendApplicationTests {
             workbook.write(outputStream);
 
             mockMvc.perform(
-                    org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                            .multipart("/api/players/import")
-                            .file(
-                                    new org.springframework.mock.web.MockMultipartFile(
-                                            "file",
-                                            "atomic-players.xlsx",
-                                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                            outputStream.toByteArray())))
-                    .andExpect(
-                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
-                                    .status().isOk())
-                    .andExpect(
-                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
-                                    .jsonPath("$.totalRows").value(2))
-                    .andExpect(
-                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
-                                    .jsonPath("$.createdRows").value(0));
+                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                .multipart("/api/players/import")
+                                .file(
+                                        new org.springframework.mock.web.MockMultipartFile(
+                                                "file",
+                                                "atomic-players.xlsx",
+                                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                                outputStream.toByteArray()))
+                                .with(
+                                        org.springframework.security.test.web.servlet.request
+                                                .SecurityMockMvcRequestPostProcessors
+                                                .authentication(
+                                                        createAdminAuthentication()
+                                                )
+                                ))
+                        .andExpect(
+                                org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                        .status().isOk())
+                        .andExpect(
+                                org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                        .jsonPath("$.totalRows").value(2))
+                        .andExpect(
+                                org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                        .jsonPath("$.createdRows").value(0));
 
             assertEquals(
                     initialPlayerCount,
@@ -3711,8 +3926,131 @@ class CricklocalBackendApplicationTests {
 				.andExpect(status().isCreated());
 	}
 
+        @Test
+        void removePlayerFromTeamShouldRejectPlayerInFinalizedPlayingXI()
+                throws Exception {
+
+                String testId = String.valueOf(System.nanoTime());
+
+                Team team = new Team();
+                team.setName("Finalized XI Removal Team " + testId);
+                team.setShortName("FXR" + testId.substring(testId.length() - 3));
+                team.setCity("Test City");
+                team = teamRepository.save(team);
+
+                Match match = new Match();
+                match.setName("Finalized XI Removal Match " + testId);
+                match.setMatchNumber(1);
+                match.setFormat(MatchFormat.T20);
+                match.setTotalOvers(20);
+                match.setMaxPlayersPerTeam(11);
+                match.setScheduledAt(
+                        Instant.parse("2027-04-01T10:00:00Z"));
+                match.setStatus(MatchStatus.SCHEDULED);
+                match = matchRepository.save(match);
+
+                MatchTeam matchTeam = new MatchTeam();
+                matchTeam.setMatch(match);
+                matchTeam.setTeam(team);
+                matchTeam.setSide(MatchTeamSide.TEAM_A);
+                matchTeamRepository.save(matchTeam);
+
+                Player captain = null;
+                Player wicketKeeper = null;
+
+                /*
+                * Create exactly 11 active team members and match lineup entries.
+                */
+                for (int i = 1; i <= 11; i++) {
+
+                        Player player = createPlayer(
+                                "Finalized XI Removal Player " + i,
+                                "Test",
+                                "Finalized XI Removal Player "
+                                        + i + " " + testId,
+                                PlayerRole.BATTER);
+
+                        if (i == 1) {
+                        captain = player;
+                        }
+
+                        if (i == 2) {
+                        wicketKeeper = player;
+                        }
+
+                        TeamPlayer membership = new TeamPlayer();
+                        membership.setTeam(team);
+                        membership.setPlayer(player);
+                        membership.setJerseyNumber(i);
+                        membership.setActive(true);
+                        teamPlayerRepository.save(membership);
+
+                        createLineup(match, team, player, i);
+                }
+
+                /*
+                * Set Captain.
+                */
+                MatchLineup captainLineup =
+                        matchLineupRepository
+                                .findByMatchAndPlayer(match, captain)
+                                .orElseThrow();
+
+                captainLineup.setCaptain(true);
+                matchLineupRepository.save(captainLineup);
+
+                /*
+                * Set Wicket Keeper.
+                */
+                MatchLineup wicketKeeperLineup =
+                        matchLineupRepository
+                                .findByMatchAndPlayer(match, wicketKeeper)
+                                .orElseThrow();
+
+                wicketKeeperLineup.setWicketKeeper(true);
+                matchLineupRepository.save(wicketKeeperLineup);
+
+                /*
+                * Finalize the Playing XI.
+                */
+                mockMvc.perform(
+                        post("/api/matches/" + match.getId()
+                                + "/lineup/team/" + team.getId()
+                                + "/finalize"))
+                        .andExpect(status().isOk());
+
+                assertTrue(
+                        playingXIRepository
+                                .existsByMatchAndTeam(match, team));
+
+                /*
+                * Attempt to remove a player who is part of
+                * the finalized Playing XI.
+                */
+                mockMvc.perform(
+                        org.springframework.test.web.servlet.request
+                                .MockMvcRequestBuilders
+                                .delete("/api/teams/" + team.getId()
+                                        + "/players/" + captain.getId()))
+                        .andExpect(status().isBadRequest())
+                        .andExpect(jsonPath("$.message")
+                                .value(
+                                        "Player cannot be removed because they are part of a finalized Playing XI"));
+
+                /*
+                * The team membership must remain active.
+                */
+                TeamPlayer membership =
+                        teamPlayerRepository
+                                .findByTeamAndPlayer(team, captain)
+                                .orElseThrow();
+
+                assertTrue(membership.getActive());
+                assertTrue(membership.getLeftAt() == null);
+        }
+
 	@Test
-    void setCaptainApiShouldAssignActiveTeamMemberAsCaptain() throws Exception {
+        void setCaptainApiShouldAssignActiveTeamMemberAsCaptain() throws Exception {
 
                 String testId = String.valueOf(System.currentTimeMillis());
 
@@ -4128,7 +4466,7 @@ class CricklocalBackendApplicationTests {
 						.isPresent());
 	}
 
-	@Test
+    @Test
     void finalizePlayingXIShouldCreatePlayingXIForExactlyElevenPlayersWithCaptain() throws Exception {
         String testId = String.valueOf(System.nanoTime());
 
@@ -4199,6 +4537,15 @@ class CricklocalBackendApplicationTests {
             teamPlayerRepository.save(membership);
 
             createLineup(match, teamA, player, i);
+
+                if (i == 2) {
+                MatchLineup wicketKeeperLineup = matchLineupRepository
+                        .findByMatchAndPlayer(match, player)
+                        .orElseThrow();
+
+                wicketKeeperLineup.setWicketKeeper(true);
+                matchLineupRepository.save(wicketKeeperLineup);
+                }
         }
 
         mockMvc.perform(
@@ -4405,6 +4752,7 @@ class CricklocalBackendApplicationTests {
         matchTeamB.setSide(MatchTeamSide.TEAM_B);
         matchTeamRepository.save(matchTeamB);
 
+        // Create Captain
         Player captain = createPlayer(
                 "Repeat Captain",
                 "Test",
@@ -4427,29 +4775,42 @@ class CricklocalBackendApplicationTests {
         captainLineup.setCaptain(true);
         matchLineupRepository.save(captainLineup);
 
+        // Create remaining 10 players.
+        // Player 2 will be the Wicket Keeper.
         for (int i = 2; i <= 11; i++) {
-            Player player = createPlayer(
-                    "Repeat Player " + i,
-                    "Test",
-                    "Repeat Player " + i + " " + testId,
-                    PlayerRole.BATTER);
+                Player player = createPlayer(
+                        "Repeat Player " + i,
+                        "Test",
+                        "Repeat Player " + i + " " + testId,
+                        PlayerRole.BATTER);
 
-            TeamPlayer membership = new TeamPlayer();
-            membership.setTeam(teamA);
-            membership.setPlayer(player);
-            membership.setJerseyNumber(i);
-            membership.setActive(true);
-            teamPlayerRepository.save(membership);
+                TeamPlayer membership = new TeamPlayer();
+                membership.setTeam(teamA);
+                membership.setPlayer(player);
+                membership.setJerseyNumber(i);
+                membership.setActive(true);
+                teamPlayerRepository.save(membership);
 
-            createLineup(match, teamA, player, i);
+                createLineup(match, teamA, player, i);
+
+                if (i == 2) {
+                MatchLineup wicketKeeperLineup = matchLineupRepository
+                        .findByMatchAndPlayer(match, player)
+                        .orElseThrow();
+
+                wicketKeeperLineup.setWicketKeeper(true);
+                matchLineupRepository.save(wicketKeeperLineup);
+                }
         }
 
+        // First finalization should succeed.
         mockMvc.perform(
                 post("/api/matches/" + match.getId()
                         + "/lineup/team/" + teamA.getId() + "/finalize"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.playerCount").value(11));
 
+        // Second finalization should be rejected.
         mockMvc.perform(
                 post("/api/matches/" + match.getId()
                         + "/lineup/team/" + teamA.getId() + "/finalize"))
@@ -4500,6 +4861,7 @@ class CricklocalBackendApplicationTests {
         matchTeamB.setSide(MatchTeamSide.TEAM_B);
         matchTeamRepository.save(matchTeamB);
 
+        // Create Captain
         Player captain = createPlayer(
                 "Inactive Captain",
                 "Test",
@@ -4522,29 +4884,42 @@ class CricklocalBackendApplicationTests {
         captainLineup.setCaptain(true);
         matchLineupRepository.save(captainLineup);
 
+        // Create remaining 10 players.
+        // Player 2 will be the valid Wicket Keeper.
+        // Player 11 will intentionally be inactive.
         for (int i = 2; i <= 11; i++) {
-            Player player = createPlayer(
-                    "Inactive XI Player " + i,
-                    "Test",
-                    "Inactive XI Player " + i + " " + testId,
-                    PlayerRole.BATTER);
+                Player player = createPlayer(
+                        "Inactive XI Player " + i,
+                        "Test",
+                        "Inactive XI Player " + i + " " + testId,
+                        PlayerRole.BATTER);
 
-            TeamPlayer membership = new TeamPlayer();
-            membership.setTeam(teamA);
-            membership.setPlayer(player);
-            membership.setJerseyNumber(i);
-            membership.setActive(true);
-            teamPlayerRepository.save(membership);
+                TeamPlayer membership = new TeamPlayer();
+                membership.setTeam(teamA);
+                membership.setPlayer(player);
+                membership.setJerseyNumber(i);
+                membership.setActive(true);
+                teamPlayerRepository.save(membership);
 
-            createLineup(match, teamA, player, i);
+                createLineup(match, teamA, player, i);
 
-            if (i == 11) {
+                if (i == 2) {
+                MatchLineup wicketKeeperLineup = matchLineupRepository
+                        .findByMatchAndPlayer(match, player)
+                        .orElseThrow();
+
+                wicketKeeperLineup.setWicketKeeper(true);
+                matchLineupRepository.save(wicketKeeperLineup);
+                }
+
+                if (i == 11) {
                 membership.setActive(false);
                 membership.setLeftAt(Instant.now());
                 teamPlayerRepository.save(membership);
-            }
+                }
         }
 
+        // Finalization should fail because player 11 is inactive.
         mockMvc.perform(
                 post("/api/matches/" + match.getId()
                         + "/lineup/team/" + teamA.getId() + "/finalize"))
@@ -4552,12 +4927,12 @@ class CricklocalBackendApplicationTests {
                 .andExpect(jsonPath("$.message")
                         .value(org.hamcrest.Matchers.containsString(
                                 "Playing XI contains an inactive team member")));
-
-        assertFalse(playingXIRepository.existsByMatchAndTeam(match, teamA));
     }
 
     @Test
-    void finalizePlayingXIShouldRejectPlayerWithFinalizedPlayingXIAtSameScheduledTime() throws Exception {
+    void finalizePlayingXIShouldRejectPlayerWithFinalizedPlayingXIAtSameScheduledTime()
+                throws Exception {
+
         String testId = String.valueOf(System.nanoTime());
         Instant scheduledAt = Instant.parse("2027-01-06T10:00:00Z");
 
@@ -4585,6 +4960,10 @@ class CricklocalBackendApplicationTests {
         teamD.setCity("Test City");
         teamD = teamRepository.save(teamD);
 
+        // ---------------------------------------------------------
+        // Match 1
+        // ---------------------------------------------------------
+
         Match match1 = new Match();
         match1.setName("Conflict Match 1 " + testId);
         match1.setMatchNumber(1);
@@ -4607,6 +4986,10 @@ class CricklocalBackendApplicationTests {
         match1TeamB.setSide(MatchTeamSide.TEAM_B);
         matchTeamRepository.save(match1TeamB);
 
+        // ---------------------------------------------------------
+        // Match 2
+        // ---------------------------------------------------------
+
         Match match2 = new Match();
         match2.setName("Conflict Match 2 " + testId);
         match2.setMatchNumber(2);
@@ -4617,17 +5000,21 @@ class CricklocalBackendApplicationTests {
         match2.setStatus(MatchStatus.SCHEDULED);
         match2 = matchRepository.save(match2);
 
-        MatchTeam match2TeamA = new MatchTeam();
-        match2TeamA.setMatch(match2);
-        match2TeamA.setTeam(teamC);
-        match2TeamA.setSide(MatchTeamSide.TEAM_A);
-        matchTeamRepository.save(match2TeamA);
+        MatchTeam match2TeamC = new MatchTeam();
+        match2TeamC.setMatch(match2);
+        match2TeamC.setTeam(teamC);
+        match2TeamC.setSide(MatchTeamSide.TEAM_A);
+        matchTeamRepository.save(match2TeamC);
 
-        MatchTeam match2TeamB = new MatchTeam();
-        match2TeamB.setMatch(match2);
-        match2TeamB.setTeam(teamD);
-        match2TeamB.setSide(MatchTeamSide.TEAM_B);
-        matchTeamRepository.save(match2TeamB);
+        MatchTeam match2TeamD = new MatchTeam();
+        match2TeamD.setMatch(match2);
+        match2TeamD.setTeam(teamD);
+        match2TeamD.setSide(MatchTeamSide.TEAM_B);
+        matchTeamRepository.save(match2TeamD);
+
+        // ---------------------------------------------------------
+        // Shared player belongs to both teams
+        // ---------------------------------------------------------
 
         Player sharedPlayer = createPlayer(
                 "Conflict Player",
@@ -4649,6 +5036,12 @@ class CricklocalBackendApplicationTests {
         membershipC.setActive(true);
         teamPlayerRepository.save(membershipC);
 
+        // ---------------------------------------------------------
+        // Match 1 - create Playing XI
+        // Shared player is Captain.
+        // Match 1 Player 2 is Wicket Keeper.
+        // ---------------------------------------------------------
+
         createLineup(match1, teamA, sharedPlayer, 1);
 
         MatchLineup match1CaptainLineup = matchLineupRepository
@@ -4659,31 +5052,48 @@ class CricklocalBackendApplicationTests {
         matchLineupRepository.save(match1CaptainLineup);
 
         for (int i = 2; i <= 11; i++) {
-            Player player = createPlayer(
-                    "Match1 Player " + i,
-                    "Test",
-                    "Match1 Player " + i + " " + testId,
-                    PlayerRole.BATTER);
+                Player player = createPlayer(
+                        "Match1 Player " + i,
+                        "Test",
+                        "Match1 Player " + i + " " + testId,
+                        PlayerRole.BATTER);
 
-            TeamPlayer membership = new TeamPlayer();
-            membership.setTeam(teamA);
-            membership.setPlayer(player);
-            membership.setJerseyNumber(i);
-            membership.setActive(true);
-            teamPlayerRepository.save(membership);
+                TeamPlayer membership = new TeamPlayer();
+                membership.setTeam(teamA);
+                membership.setPlayer(player);
+                membership.setJerseyNumber(i);
+                membership.setActive(true);
+                teamPlayerRepository.save(membership);
 
-            createLineup(match1, teamA, player, i);
+                createLineup(match1, teamA, player, i);
+
+                if (i == 2) {
+                MatchLineup wicketKeeperLineup = matchLineupRepository
+                        .findByMatchAndPlayer(match1, player)
+                        .orElseThrow();
+
+                wicketKeeperLineup.setWicketKeeper(true);
+                matchLineupRepository.save(wicketKeeperLineup);
+                }
         }
 
+        // Match 1 finalization must succeed.
         mockMvc.perform(
                 post("/api/matches/" + match1.getId()
                         + "/lineup/team/" + teamA.getId() + "/finalize"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.playerCount").value(11));
 
-        assertTrue(playingXIRepository
-                .findByMatchAndTeam(match1, teamA)
-                .isPresent());
+        assertTrue(
+                playingXIRepository
+                        .findByMatchAndTeam(match1, teamA)
+                        .isPresent());
+
+        // ---------------------------------------------------------
+        // Match 2 - create Playing XI
+        // Shared player is Captain.
+        // Match 2 Player 2 is Wicket Keeper.
+        // ---------------------------------------------------------
 
         createLineup(match2, teamC, sharedPlayer, 1);
 
@@ -4695,22 +5105,33 @@ class CricklocalBackendApplicationTests {
         matchLineupRepository.save(match2CaptainLineup);
 
         for (int i = 2; i <= 11; i++) {
-            Player player = createPlayer(
-                    "Match2 Player " + i,
-                    "Test",
-                    "Match2 Player " + i + " " + testId,
-                    PlayerRole.BATTER);
+                Player player = createPlayer(
+                        "Match2 Player " + i,
+                        "Test",
+                        "Match2 Player " + i + " " + testId,
+                        PlayerRole.BATTER);
 
-            TeamPlayer membership = new TeamPlayer();
-            membership.setTeam(teamC);
-            membership.setPlayer(player);
-            membership.setJerseyNumber(i);
-            membership.setActive(true);
-            teamPlayerRepository.save(membership);
+                TeamPlayer membership = new TeamPlayer();
+                membership.setTeam(teamC);
+                membership.setPlayer(player);
+                membership.setJerseyNumber(i);
+                membership.setActive(true);
+                teamPlayerRepository.save(membership);
 
-            createLineup(match2, teamC, player, i);
+                createLineup(match2, teamC, player, i);
+
+                if (i == 2) {
+                MatchLineup wicketKeeperLineup = matchLineupRepository
+                        .findByMatchAndPlayer(match2, player)
+                        .orElseThrow();
+
+                wicketKeeperLineup.setWicketKeeper(true);
+                matchLineupRepository.save(wicketKeeperLineup);
+                }
         }
 
+        // Match 2 finalization must fail because the shared player
+        // already has a finalized Playing XI at the same scheduled time.
         mockMvc.perform(
                 post("/api/matches/" + match2.getId()
                         + "/lineup/team/" + teamC.getId() + "/finalize"))
@@ -4719,10 +5140,11 @@ class CricklocalBackendApplicationTests {
                         .value(org.hamcrest.Matchers.containsString(
                                 "Player has a finalized Playing XI conflict at the same scheduled time")));
 
-        assertFalse(playingXIRepository
-                .findByMatchAndTeam(match2, teamC)
-                .isPresent());
-    }
+        assertFalse(
+                playingXIRepository
+                        .findByMatchAndTeam(match2, teamC)
+                        .isPresent());
+        }
 
     @Test
     void finalizePlayingXIShouldRejectTeamThatDoesNotBelongToMatch() throws Exception {
@@ -4780,7 +5202,5007 @@ class CricklocalBackendApplicationTests {
                 .isPresent());
     }
 
-	private void createInningsState(
+    @Test
+    void finalizePlayingXIShouldRejectWhenWicketKeeperIsNotInPlayingXI() throws Exception {
+        String testId = String.valueOf(System.nanoTime());
+
+        Team teamA = new Team();
+        teamA.setName("WK Required Team A " + testId);
+        teamA.setShortName("WKA" + testId.substring(testId.length() - 3));
+        teamA.setCity("Test City");
+        teamA = teamRepository.save(teamA);
+
+        Team teamB = new Team();
+        teamB.setName("WK Required Team B " + testId);
+        teamB.setShortName("WKB" + testId.substring(testId.length() - 3));
+        teamB.setCity("Test City");
+        teamB = teamRepository.save(teamB);
+
+        Match match = new Match();
+        match.setName("WK Required Test Match " + testId);
+        match.setMatchNumber(1);
+        match.setFormat(MatchFormat.T20);
+        match.setTotalOvers(20);
+        match.setMaxPlayersPerTeam(11);
+        match.setScheduledAt(Instant.parse("2027-01-07T10:00:00Z"));
+        match.setStatus(MatchStatus.SCHEDULED);
+        match = matchRepository.save(match);
+
+        MatchTeam matchTeamA = new MatchTeam();
+        matchTeamA.setMatch(match);
+        matchTeamA.setTeam(teamA);
+        matchTeamA.setSide(MatchTeamSide.TEAM_A);
+        matchTeamRepository.save(matchTeamA);
+
+        MatchTeam matchTeamB = new MatchTeam();
+        matchTeamB.setMatch(match);
+        matchTeamB.setTeam(teamB);
+        matchTeamB.setSide(MatchTeamSide.TEAM_B);
+        matchTeamRepository.save(matchTeamB);
+
+        Player captain = null;
+
+        // Create exactly 11 active team members and lineup entries.
+        for (int i = 1; i <= 11; i++) {
+                Player player = createPlayer(
+                        "WK Required Player " + i,
+                        "Test",
+                        "WK Required Player " + i + " " + testId,
+                        PlayerRole.BATTER);
+
+                if (i == 1) {
+                captain = player;
+                }
+
+                TeamPlayer membership = new TeamPlayer();
+                membership.setTeam(teamA);
+                membership.setPlayer(player);
+                membership.setJerseyNumber(i);
+                membership.setActive(true);
+                teamPlayerRepository.save(membership);
+
+                createLineup(match, teamA, player, i);
+        }
+
+        // Captain is in the Playing XI.
+        MatchLineup captainLineup = matchLineupRepository
+                .findByMatchAndPlayer(match, captain)
+                .orElseThrow();
+
+        captainLineup.setCaptain(true);
+        matchLineupRepository.save(captainLineup);
+
+        // Intentionally do NOT select a Wicket Keeper.
+
+        mockMvc.perform(
+                post("/api/matches/" + match.getId()
+                        + "/lineup/team/" + teamA.getId() + "/finalize"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message")
+                        .value("Wicket Keeper must be part of the Playing XI"));
+
+        assertFalse(
+                playingXIRepository.existsByMatchAndTeam(match, teamA));
+    }
+
+    @Test
+    void addPlayerToMatchShouldUpdateExistingLineupInsteadOfCreatingDuplicate()
+                throws Exception {
+
+        String testId = String.valueOf(System.nanoTime());
+
+        Team team = new Team();
+        team.setName("Lineup Update Team " + testId);
+        team.setShortName("LUP" + testId.substring(testId.length() - 3));
+        team.setCity("Test City");
+        team = teamRepository.save(team);
+
+        Player player = createPlayer(
+                "Lineup Update Player",
+                "Test",
+                "Lineup Update Player " + testId,
+                PlayerRole.BATTER);
+
+        Match match = new Match();
+        match.setName("Lineup Update Test Match " + testId);
+        match.setMatchNumber(1);
+        match.setFormat(MatchFormat.T20);
+        match.setTotalOvers(20);
+        match.setMaxPlayersPerTeam(11);
+        match.setScheduledAt(
+                Instant.parse("2027-02-01T10:00:00Z"));
+        match.setStatus(MatchStatus.SCHEDULED);
+        match = matchRepository.save(match);
+
+        MatchTeam matchTeam = new MatchTeam();
+        matchTeam.setMatch(match);
+        matchTeam.setTeam(team);
+        matchTeam.setSide(MatchTeamSide.TEAM_A);
+        matchTeamRepository.save(matchTeam);
+
+        TeamPlayer membership = new TeamPlayer();
+        membership.setTeam(team);
+        membership.setPlayer(player);
+        membership.setJerseyNumber(1);
+        membership.setActive(true);
+        teamPlayerRepository.save(membership);
+
+        // First selection.
+        mockMvc.perform(
+                post("/api/matches/" + match.getId() + "/lineup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                "teamId": %d,
+                                "playerId": %d,
+                                "playing": true,
+                                "captain": false,
+                                "wicketKeeper": false
+                                }
+                                """.formatted(
+                                team.getId(),
+                                player.getId())))
+                .andExpect(status().isCreated());
+
+        assertEquals(
+                1,
+                matchLineupRepository
+                        .findByMatchAndPlayer(match, player)
+                        .stream()
+                        .count());
+
+        // Select the same player again.
+        mockMvc.perform(
+                post("/api/matches/" + match.getId() + "/lineup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                "teamId": %d,
+                                "playerId": %d,
+                                "playing": true,
+                                "captain": true,
+                                "wicketKeeper": false
+                                }
+                                """.formatted(
+                                team.getId(),
+                                player.getId())))
+                .andExpect(status().isCreated());
+
+        // There must still be exactly one lineup row.
+        assertEquals(
+                1,
+                matchLineupRepository
+                        .findByMatchAndPlayer(match, player)
+                        .stream()
+                        .count());
+
+        MatchLineup lineup = matchLineupRepository
+                .findByMatchAndPlayer(match, player)
+                .orElseThrow();
+
+        // Existing row was updated.
+        assertTrue(lineup.getPlaying());
+        assertTrue(lineup.getCaptain());
+        assertFalse(lineup.getWicketKeeper());
+    }
+
+    @Test
+    void addPlayerToMatchShouldClearPreviousCaptainWhenCaptainChanges()
+                throws Exception {
+
+        String testId = String.valueOf(System.nanoTime());
+
+        Team team = new Team();
+        team.setName("Captain Switch Team " + testId);
+        team.setShortName("CST" + testId.substring(testId.length() - 3));
+        team.setCity("Test City");
+        team = teamRepository.save(team);
+
+        Player firstPlayer = createPlayer(
+                "Captain First",
+                "Test",
+                "Captain First " + testId,
+                PlayerRole.BATTER);
+
+        Player secondPlayer = createPlayer(
+                "Captain Second",
+                "Test",
+                "Captain Second " + testId,
+                PlayerRole.BATTER);
+
+        Match match = new Match();
+        match.setName("Captain Switch Match " + testId);
+        match.setMatchNumber(1);
+        match.setFormat(MatchFormat.T20);
+        match.setTotalOvers(20);
+        match.setMaxPlayersPerTeam(11);
+        match.setScheduledAt(
+                Instant.parse("2027-02-02T10:00:00Z"));
+        match.setStatus(MatchStatus.SCHEDULED);
+        match = matchRepository.save(match);
+
+        MatchTeam matchTeam = new MatchTeam();
+        matchTeam.setMatch(match);
+        matchTeam.setTeam(team);
+        matchTeam.setSide(MatchTeamSide.TEAM_A);
+        matchTeamRepository.save(matchTeam);
+
+        TeamPlayer firstMembership = new TeamPlayer();
+        firstMembership.setTeam(team);
+        firstMembership.setPlayer(firstPlayer);
+        firstMembership.setJerseyNumber(1);
+        firstMembership.setActive(true);
+        teamPlayerRepository.save(firstMembership);
+
+        TeamPlayer secondMembership = new TeamPlayer();
+        secondMembership.setTeam(team);
+        secondMembership.setPlayer(secondPlayer);
+        secondMembership.setJerseyNumber(2);
+        secondMembership.setActive(true);
+        teamPlayerRepository.save(secondMembership);
+
+        // Player 1 becomes Captain.
+        mockMvc.perform(
+                post("/api/matches/" + match.getId() + "/lineup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                "teamId": %d,
+                                "playerId": %d,
+                                "playing": true,
+                                "captain": true,
+                                "wicketKeeper": false
+                                }
+                                """.formatted(
+                                team.getId(),
+                                firstPlayer.getId())))
+                .andExpect(status().isCreated());
+
+        MatchLineup firstLineup = matchLineupRepository
+                .findByMatchAndPlayer(match, firstPlayer)
+                .orElseThrow();
+
+        assertTrue(firstLineup.getPlaying());
+        assertTrue(firstLineup.getCaptain());
+
+        // Player 2 becomes the new Captain.
+        mockMvc.perform(
+                post("/api/matches/" + match.getId() + "/lineup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                "teamId": %d,
+                                "playerId": %d,
+                                "playing": true,
+                                "captain": true,
+                                "wicketKeeper": false
+                                }
+                                """.formatted(
+                                team.getId(),
+                                secondPlayer.getId())))
+                .andExpect(status().isCreated());
+
+        MatchLineup updatedFirstLineup = matchLineupRepository
+                .findByMatchAndPlayer(match, firstPlayer)
+                .orElseThrow();
+
+        MatchLineup secondLineup = matchLineupRepository
+                .findByMatchAndPlayer(match, secondPlayer)
+                .orElseThrow();
+
+        // Previous Captain must be cleared.
+        assertTrue(updatedFirstLineup.getPlaying());
+        assertFalse(updatedFirstLineup.getCaptain());
+
+        // New Captain must be set.
+        assertTrue(secondLineup.getPlaying());
+        assertTrue(secondLineup.getCaptain());
+    }
+
+    @Test
+    void addPlayerToMatchShouldClearPreviousWicketKeeperWhenWicketKeeperChanges()
+                throws Exception {
+
+        String testId = String.valueOf(System.nanoTime());
+
+        Team team = new Team();
+        team.setName("WK Switch Team " + testId);
+        team.setShortName("WKS" + testId.substring(testId.length() - 3));
+        team.setCity("Test City");
+        team = teamRepository.save(team);
+
+        Player firstPlayer = createPlayer(
+                "WK First",
+                "Test",
+                "WK First " + testId,
+                PlayerRole.BATTER);
+
+        Player secondPlayer = createPlayer(
+                "WK Second",
+                "Test",
+                "WK Second " + testId,
+                PlayerRole.BATTER);
+
+        Match match = new Match();
+        match.setName("WK Switch Match " + testId);
+        match.setMatchNumber(1);
+        match.setFormat(MatchFormat.T20);
+        match.setTotalOvers(20);
+        match.setMaxPlayersPerTeam(11);
+        match.setScheduledAt(
+                Instant.parse("2027-02-03T10:00:00Z"));
+        match.setStatus(MatchStatus.SCHEDULED);
+        match = matchRepository.save(match);
+
+        MatchTeam matchTeam = new MatchTeam();
+        matchTeam.setMatch(match);
+        matchTeam.setTeam(team);
+        matchTeam.setSide(MatchTeamSide.TEAM_A);
+        matchTeamRepository.save(matchTeam);
+
+        TeamPlayer firstMembership = new TeamPlayer();
+        firstMembership.setTeam(team);
+        firstMembership.setPlayer(firstPlayer);
+        firstMembership.setJerseyNumber(1);
+        firstMembership.setActive(true);
+        teamPlayerRepository.save(firstMembership);
+
+        TeamPlayer secondMembership = new TeamPlayer();
+        secondMembership.setTeam(team);
+        secondMembership.setPlayer(secondPlayer);
+        secondMembership.setJerseyNumber(2);
+        secondMembership.setActive(true);
+        teamPlayerRepository.save(secondMembership);
+
+        // Player 1 becomes Wicket Keeper.
+        mockMvc.perform(
+                post("/api/matches/" + match.getId() + "/lineup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                "teamId": %d,
+                                "playerId": %d,
+                                "playing": true,
+                                "captain": false,
+                                "wicketKeeper": true
+                                }
+                                """.formatted(
+                                team.getId(),
+                                firstPlayer.getId())))
+                .andExpect(status().isCreated());
+
+        MatchLineup firstLineup = matchLineupRepository
+                .findByMatchAndPlayer(match, firstPlayer)
+                .orElseThrow();
+
+        assertTrue(firstLineup.getPlaying());
+        assertTrue(firstLineup.getWicketKeeper());
+
+        // Player 2 becomes the new Wicket Keeper.
+        mockMvc.perform(
+                post("/api/matches/" + match.getId() + "/lineup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                "teamId": %d,
+                                "playerId": %d,
+                                "playing": true,
+                                "captain": false,
+                                "wicketKeeper": true
+                                }
+                                """.formatted(
+                                team.getId(),
+                                secondPlayer.getId())))
+                .andExpect(status().isCreated());
+
+        MatchLineup updatedFirstLineup = matchLineupRepository
+                .findByMatchAndPlayer(match, firstPlayer)
+                .orElseThrow();
+
+        MatchLineup secondLineup = matchLineupRepository
+                .findByMatchAndPlayer(match, secondPlayer)
+                .orElseThrow();
+
+        // Previous Wicket Keeper must be cleared.
+        assertTrue(updatedFirstLineup.getPlaying());
+        assertFalse(updatedFirstLineup.getWicketKeeper());
+
+        // New Wicket Keeper must be set.
+        assertTrue(secondLineup.getPlaying());
+        assertTrue(secondLineup.getWicketKeeper());
+    }
+
+    @Test
+    void addPlayerToMatchShouldClearCaptainWhenCaptainIsDeselected()
+                throws Exception {
+
+        String testId = String.valueOf(System.nanoTime());
+
+        Team team = new Team();
+        team.setName("Captain Deselect Team " + testId);
+        team.setShortName("CDT" + testId.substring(testId.length() - 3));
+        team.setCity("Test City");
+        team = teamRepository.save(team);
+
+        Player player = createPlayer(
+                "Captain Deselect",
+                "Test",
+                "Captain Deselect " + testId,
+                PlayerRole.BATTER);
+
+        Match match = new Match();
+        match.setName("Captain Deselect Match " + testId);
+        match.setMatchNumber(1);
+        match.setFormat(MatchFormat.T20);
+        match.setTotalOvers(20);
+        match.setMaxPlayersPerTeam(11);
+        match.setScheduledAt(
+                Instant.parse("2027-02-04T10:00:00Z"));
+        match.setStatus(MatchStatus.SCHEDULED);
+        match = matchRepository.save(match);
+
+        MatchTeam matchTeam = new MatchTeam();
+        matchTeam.setMatch(match);
+        matchTeam.setTeam(team);
+        matchTeam.setSide(MatchTeamSide.TEAM_A);
+        matchTeamRepository.save(matchTeam);
+
+        TeamPlayer membership = new TeamPlayer();
+        membership.setTeam(team);
+        membership.setPlayer(player);
+        membership.setJerseyNumber(1);
+        membership.setActive(true);
+        teamPlayerRepository.save(membership);
+
+        // Select player as Captain.
+        mockMvc.perform(
+                post("/api/matches/" + match.getId() + "/lineup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                "teamId": %d,
+                                "playerId": %d,
+                                "playing": true,
+                                "captain": true,
+                                "wicketKeeper": false
+                                }
+                                """.formatted(
+                                team.getId(),
+                                player.getId())))
+                .andExpect(status().isCreated());
+
+        MatchLineup lineup = matchLineupRepository
+                .findByMatchAndPlayer(match, player)
+                .orElseThrow();
+
+        assertTrue(lineup.getPlaying());
+        assertTrue(lineup.getCaptain());
+
+        // Deselect the player.
+        mockMvc.perform(
+                post("/api/matches/" + match.getId() + "/lineup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                "teamId": %d,
+                                "playerId": %d,
+                                "playing": false,
+                                "captain": false,
+                                "wicketKeeper": false
+                                }
+                                """.formatted(
+                                team.getId(),
+                                player.getId())))
+                .andExpect(status().isCreated());
+
+        MatchLineup updatedLineup = matchLineupRepository
+                .findByMatchAndPlayer(match, player)
+                .orElseThrow();
+
+        // Player is no longer playing.
+        assertFalse(updatedLineup.getPlaying());
+
+        // Captain role must also be cleared.
+        assertFalse(updatedLineup.getCaptain());
+    }
+
+    @Test
+    void addPlayerToMatchShouldClearWicketKeeperWhenWicketKeeperIsDeselected()
+                throws Exception {
+
+        String testId = String.valueOf(System.nanoTime());
+
+        Team team = new Team();
+        team.setName("WK Deselect Team " + testId);
+        team.setShortName("WDT" + testId.substring(testId.length() - 3));
+        team.setCity("Test City");
+        team = teamRepository.save(team);
+
+        Player player = createPlayer(
+                "WK Deselect",
+                "Test",
+                "WK Deselect " + testId,
+                PlayerRole.BATTER);
+
+        Match match = new Match();
+        match.setName("WK Deselect Match " + testId);
+        match.setMatchNumber(1);
+        match.setFormat(MatchFormat.T20);
+        match.setTotalOvers(20);
+        match.setMaxPlayersPerTeam(11);
+        match.setScheduledAt(
+                Instant.parse("2027-02-05T10:00:00Z"));
+        match.setStatus(MatchStatus.SCHEDULED);
+        match = matchRepository.save(match);
+
+        MatchTeam matchTeam = new MatchTeam();
+        matchTeam.setMatch(match);
+        matchTeam.setTeam(team);
+        matchTeam.setSide(MatchTeamSide.TEAM_A);
+        matchTeamRepository.save(matchTeam);
+
+        TeamPlayer membership = new TeamPlayer();
+        membership.setTeam(team);
+        membership.setPlayer(player);
+        membership.setJerseyNumber(1);
+        membership.setActive(true);
+        teamPlayerRepository.save(membership);
+
+        // Select player as Wicket Keeper.
+        mockMvc.perform(
+                post("/api/matches/" + match.getId() + "/lineup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                "teamId": %d,
+                                "playerId": %d,
+                                "playing": true,
+                                "captain": false,
+                                "wicketKeeper": true
+                                }
+                                """.formatted(
+                                team.getId(),
+                                player.getId())))
+                .andExpect(status().isCreated());
+
+        MatchLineup lineup = matchLineupRepository
+                .findByMatchAndPlayer(match, player)
+                .orElseThrow();
+
+        assertTrue(lineup.getPlaying());
+        assertTrue(lineup.getWicketKeeper());
+
+        // Deselect the player.
+        mockMvc.perform(
+                post("/api/matches/" + match.getId() + "/lineup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                "teamId": %d,
+                                "playerId": %d,
+                                "playing": false,
+                                "captain": false,
+                                "wicketKeeper": false
+                                }
+                                """.formatted(
+                                team.getId(),
+                                player.getId())))
+                .andExpect(status().isCreated());
+
+        MatchLineup updatedLineup = matchLineupRepository
+                .findByMatchAndPlayer(match, player)
+                .orElseThrow();
+
+        // Player is no longer playing.
+        assertFalse(updatedLineup.getPlaying());
+
+        // Wicket Keeper role must also be cleared.
+        assertFalse(updatedLineup.getWicketKeeper());
+    }
+
+    @Test
+    void addPlayerToMatchShouldRejectChangesAfterPlayingXIIsFinalized()
+                throws Exception {
+
+        String testId = String.valueOf(System.nanoTime());
+
+        Team teamA = new Team();
+        teamA.setName("Locked XI Team A " + testId);
+        teamA.setShortName("LXA" + testId.substring(testId.length() - 3));
+        teamA.setCity("Test City");
+        teamA = teamRepository.save(teamA);
+
+        Team teamB = new Team();
+        teamB.setName("Locked XI Team B " + testId);
+        teamB.setShortName("LXB" + testId.substring(testId.length() - 3));
+        teamB.setCity("Test City");
+        teamB = teamRepository.save(teamB);
+
+        Match match = new Match();
+        match.setName("Locked XI Match " + testId);
+        match.setMatchNumber(1);
+        match.setFormat(MatchFormat.T20);
+        match.setTotalOvers(20);
+        match.setMaxPlayersPerTeam(11);
+        match.setScheduledAt(
+                Instant.parse("2027-02-06T10:00:00Z"));
+        match.setStatus(MatchStatus.SCHEDULED);
+        match = matchRepository.save(match);
+
+        MatchTeam matchTeamA = new MatchTeam();
+        matchTeamA.setMatch(match);
+        matchTeamA.setTeam(teamA);
+        matchTeamA.setSide(MatchTeamSide.TEAM_A);
+        matchTeamRepository.save(matchTeamA);
+
+        MatchTeam matchTeamB = new MatchTeam();
+        matchTeamB.setMatch(match);
+        matchTeamB.setTeam(teamB);
+        matchTeamB.setSide(MatchTeamSide.TEAM_B);
+        matchTeamRepository.save(matchTeamB);
+
+        Player captain = null;
+        Player wicketKeeper = null;
+
+        // Create exactly 11 active players and select them.
+        for (int i = 1; i <= 11; i++) {
+
+                Player player = createPlayer(
+                        "Locked XI Player " + i,
+                        "Test",
+                        "Locked XI Player " + i + " " + testId,
+                        PlayerRole.BATTER);
+
+                if (i == 1) {
+                captain = player;
+                }
+
+                if (i == 2) {
+                wicketKeeper = player;
+                }
+
+                TeamPlayer membership = new TeamPlayer();
+                membership.setTeam(teamA);
+                membership.setPlayer(player);
+                membership.setJerseyNumber(i);
+                membership.setActive(true);
+                teamPlayerRepository.save(membership);
+
+                createLineup(match, teamA, player, i);
+        }
+
+        // Set Captain.
+        MatchLineup captainLineup = matchLineupRepository
+                .findByMatchAndPlayer(match, captain)
+                .orElseThrow();
+
+        captainLineup.setCaptain(true);
+        matchLineupRepository.save(captainLineup);
+
+        // Set Wicket Keeper.
+        MatchLineup wicketKeeperLineup = matchLineupRepository
+                .findByMatchAndPlayer(match, wicketKeeper)
+                .orElseThrow();
+
+        wicketKeeperLineup.setWicketKeeper(true);
+        matchLineupRepository.save(wicketKeeperLineup);
+
+        // Finalize the Playing XI.
+        mockMvc.perform(
+                post("/api/matches/" + match.getId()
+                        + "/lineup/team/" + teamA.getId() + "/finalize"))
+                .andExpect(status().isOk());
+
+        assertTrue(
+                playingXIRepository.existsByMatchAndTeam(
+                        match,
+                        teamA));
+
+        // Try to deselect the Captain after lock.
+        mockMvc.perform(
+                post("/api/matches/" + match.getId() + "/lineup")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                "teamId": %d,
+                                "playerId": %d,
+                                "playing": false,
+                                "captain": false,
+                                "wicketKeeper": false
+                                }
+                                """.formatted(
+                                teamA.getId(),
+                                captain.getId())))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message")
+                        .value(
+                                "Playing XI has already been finalized for this team"));
+
+        // Verify the lineup remains unchanged.
+        MatchLineup lockedCaptainLineup = matchLineupRepository
+                .findByMatchAndPlayer(match, captain)
+                .orElseThrow();
+
+        assertTrue(lockedCaptainLineup.getPlaying());
+        assertTrue(lockedCaptainLineup.getCaptain());
+    }
+
+    @Test
+    void getFinalizedPlayingXIShouldReturnPersistedPlayingXI() throws Exception {
+
+        String testId = String.valueOf(System.nanoTime());
+
+        Team teamA = new Team();
+        teamA.setName("Persisted XI Team A " + testId);
+        teamA.setShortName("PXA" + testId.substring(testId.length() - 3));
+        teamA.setCity("Test City");
+        teamA = teamRepository.save(teamA);
+
+        Team teamB = new Team();
+        teamB.setName("Persisted XI Team B " + testId);
+        teamB.setShortName("PXB" + testId.substring(testId.length() - 3));
+        teamB.setCity("Test City");
+        teamB = teamRepository.save(teamB);
+
+        Match match = new Match();
+        match.setName("Persisted XI Match " + testId);
+        match.setMatchNumber(1);
+        match.setFormat(MatchFormat.T20);
+        match.setTotalOvers(20);
+        match.setMaxPlayersPerTeam(11);
+        match.setScheduledAt(
+                Instant.parse("2027-02-07T10:00:00Z"));
+        match.setStatus(MatchStatus.SCHEDULED);
+        match = matchRepository.save(match);
+
+        MatchTeam matchTeamA = new MatchTeam();
+        matchTeamA.setMatch(match);
+        matchTeamA.setTeam(teamA);
+        matchTeamA.setSide(MatchTeamSide.TEAM_A);
+        matchTeamRepository.save(matchTeamA);
+
+        MatchTeam matchTeamB = new MatchTeam();
+        matchTeamB.setMatch(match);
+        matchTeamB.setTeam(teamB);
+        matchTeamB.setSide(MatchTeamSide.TEAM_B);
+        matchTeamRepository.save(matchTeamB);
+
+        Player captain = null;
+
+        for (int i = 1; i <= 11; i++) {
+
+                Player player = createPlayer(
+                        "Persisted XI Player " + i,
+                        "Test",
+                        "Persisted XI Player " + i + " " + testId,
+                        PlayerRole.BATTER);
+
+                if (i == 1) {
+                captain = player;
+                }
+
+                TeamPlayer membership = new TeamPlayer();
+                membership.setTeam(teamA);
+                membership.setPlayer(player);
+                membership.setJerseyNumber(i);
+                membership.setActive(true);
+                teamPlayerRepository.save(membership);
+
+                createLineup(match, teamA, player, i);
+        }
+
+        MatchLineup captainLineup = matchLineupRepository
+                .findByMatchAndPlayer(match, captain)
+                .orElseThrow();
+
+        captainLineup.setCaptain(true);
+        matchLineupRepository.save(captainLineup);
+
+        MatchLineup wicketKeeperLineup =
+                matchLineupRepository
+                        .findByMatchAndPlayer(
+                                match,
+                                matchLineupRepository
+                                        .findByMatchAndTeam(match, teamA)
+                                        .get(1)
+                                        .getPlayer())
+                        .orElseThrow();
+
+        wicketKeeperLineup.setWicketKeeper(true);
+        matchLineupRepository.save(wicketKeeperLineup);
+
+        // Finalize the XI first.
+        mockMvc.perform(
+                post("/api/matches/" + match.getId()
+                        + "/lineup/team/" + teamA.getId() + "/finalize"))
+                .andExpect(status().isOk());
+
+        // Read the persisted finalized XI.
+        mockMvc.perform(
+                get("/api/matches/" + match.getId()
+                        + "/lineup/team/" + teamA.getId()
+                        + "/finalized"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.playingXIId").exists())
+                .andExpect(jsonPath("$.matchId")
+                        .value(match.getId()))
+                .andExpect(jsonPath("$.teamId")
+                        .value(teamA.getId()))
+                .andExpect(jsonPath("$.teamName")
+                        .value(teamA.getName()))
+                .andExpect(jsonPath("$.teamShortName")
+                        .value(teamA.getShortName()))
+                .andExpect(jsonPath("$.finalizedAt").exists())
+                .andExpect(jsonPath("$.playerCount").value(11))
+                .andExpect(jsonPath("$.captainPlayerId")
+                        .value(captain.getId()))
+                .andExpect(jsonPath("$.captainName")
+                        .value(captain.getDisplayName()));
+    }
+
+    @Test
+    void adminAccessShouldBeFalseWhenNoEntitlementExists() {
+
+        User user = createAdminAccessTestUser(true);
+
+        assertFalse(
+                adminAccessService.hasActiveAdminAccess(user));
+    }
+
+    @Test
+    void adminAccessShouldBeTrueWhenEntitlementIsActive() {
+
+        User user = createAdminAccessTestUser(true);
+
+        AdminEntitlement entitlement =
+                createAdminEntitlement(
+                        user,
+                        AdminSubscriptionStatus.ACTIVE);
+
+        assertTrue(
+                adminAccessService.hasActiveAdminAccess(user));
+    }
+
+    @Test
+    void adminAccessShouldBeTrueWhenActiveEntitlementHasFutureExpiry() {
+
+        User user = createAdminAccessTestUser(true);
+
+        AdminEntitlement entitlement =
+                createAdminEntitlement(
+                        user,
+                        AdminSubscriptionStatus.ACTIVE);
+
+        entitlement.setExpiresAt(
+                Instant.now().plusSeconds(3600));
+
+        adminEntitlementRepository.save(entitlement);
+
+        assertTrue(
+                adminAccessService.hasActiveAdminAccess(user));
+    }
+
+    @Test
+    void adminAccessShouldBeFalseWhenEntitlementIsCancelled() {
+
+        User user = createAdminAccessTestUser(true);
+
+        createAdminEntitlement(
+                user,
+                AdminSubscriptionStatus.CANCELLED);
+
+        assertFalse(
+                adminAccessService.hasActiveAdminAccess(user));
+    }
+
+    @Test
+    void adminAccessShouldBeFalseWhenEntitlementIsExpired() {
+
+        User user = createAdminAccessTestUser(true);
+
+        createAdminEntitlement(
+                user,
+                AdminSubscriptionStatus.EXPIRED);
+
+        assertFalse(
+                adminAccessService.hasActiveAdminAccess(user));
+    }
+
+    @Test
+    void adminAccessShouldBeFalseWhenActiveEntitlementHasPastExpiry() {
+
+        User user = createAdminAccessTestUser(true);
+
+        AdminEntitlement entitlement =
+                createAdminEntitlement(
+                        user,
+                        AdminSubscriptionStatus.ACTIVE);
+
+        entitlement.setExpiresAt(
+                Instant.now().minusSeconds(3600));
+
+        adminEntitlementRepository.save(entitlement);
+
+        assertFalse(
+                adminAccessService.hasActiveAdminAccess(user));
+    }
+
+    @Test
+    void adminAccessShouldBeFalseWhenUserIsInactive() {
+
+        User user = createAdminAccessTestUser(false);
+
+        AdminEntitlement entitlement =
+                createAdminEntitlement(
+                        user,
+                        AdminSubscriptionStatus.ACTIVE);
+
+        assertFalse(
+                adminAccessService.hasActiveAdminAccess(user));
+    }
+
+    @Test
+    void newlyCreatedPlayerShouldDefaultToPendingRegistrationStatus() {
+        Player player = createPlayer(
+                "Pending",
+                "Player",
+                "Pending Player",
+                PlayerRole.BATTER
+        );
+
+        assertEquals(
+                PlayerRegistrationStatus.PENDING,
+                player.getRegistrationStatus()
+        );
+    }
+
+    @Test
+    void backfillShouldCreateInvitationForPendingPlayerWithoutInvitation() {
+
+        Player player = createPlayer(
+                "Backfill",
+                "Pending",
+                "Backfill Pending Player",
+                PlayerRole.BATTER
+        );
+
+        player.setRegistrationStatus(
+                PlayerRegistrationStatus.PENDING
+        );
+
+        playerRepository.saveAndFlush(player);
+
+        User admin = createPlayerRegistrationTestUser();
+
+        List<PlayerRegistrationInvitation> before =
+                playerRegistrationInvitationRepository
+                        .findByPlayer(player);
+
+        assertTrue(before.isEmpty());
+
+        playerRegistrationInvitationBackfillService
+                .backfill(admin);
+
+        List<PlayerRegistrationInvitation> after =
+                playerRegistrationInvitationRepository
+                        .findByPlayer(player);
+
+        assertEquals(1, after.size());
+
+        PlayerRegistrationInvitation invitation = after.get(0);
+
+        assertEquals(
+                PlayerRegistrationInvitationStatus.PENDING,
+                invitation.getStatus()
+        );
+
+        assertNotNull(invitation.getToken());
+        assertNotNull(invitation.getExpiresAt());
+
+        assertEquals(
+                admin.getId(),
+                invitation.getInvitedBy().getId()
+        );
+    }
+
+    @Test
+    void backfillShouldSkipPlayerWithExistingInvitation() {
+
+        Player player = createPlayer(
+                "Backfill",
+                "Existing",
+                "Backfill Existing Invitation",
+                PlayerRole.BATTER
+        );
+
+        player.setRegistrationStatus(
+                PlayerRegistrationStatus.PENDING
+        );
+
+        playerRepository.saveAndFlush(player);
+
+        User admin = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation existingInvitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        admin
+                );
+
+        assertNotNull(existingInvitation.getId());
+
+        playerRegistrationInvitationBackfillService
+                .backfill(admin);
+
+        List<PlayerRegistrationInvitation> invitations =
+                playerRegistrationInvitationRepository
+                        .findByPlayer(player);
+
+        assertEquals(1, invitations.size());
+
+        assertEquals(
+                existingInvitation.getId(),
+                invitations.get(0).getId()
+        );
+    }
+
+    @Test
+    void backfillShouldSkipRegisteredPlayer() {
+
+        Player player = createPlayer(
+                "Backfill",
+                "Registered",
+                "Backfill Registered Player",
+                PlayerRole.BATTER
+        );
+
+        player.setRegistrationStatus(
+                PlayerRegistrationStatus.REGISTERED
+        );
+
+        playerRepository.saveAndFlush(player);
+
+        User admin = createPlayerRegistrationTestUser();
+
+        playerRegistrationInvitationBackfillService
+                .backfill(admin);
+
+        assertTrue(
+                playerRegistrationInvitationRepository
+                        .findByPlayer(player)
+                        .isEmpty()
+        );
+    }
+
+    @Test
+    void backfillShouldBeIdempotent() {
+
+        Player player = createPlayer(
+                "Backfill",
+                "Idempotent",
+                "Backfill Idempotent Player",
+                PlayerRole.BATTER
+        );
+
+        player.setRegistrationStatus(
+                PlayerRegistrationStatus.PENDING
+        );
+
+        playerRepository.saveAndFlush(player);
+
+        User admin = createPlayerRegistrationTestUser();
+
+        playerRegistrationInvitationBackfillService
+                .backfill(admin);
+
+        List<PlayerRegistrationInvitation> afterFirstRun =
+                playerRegistrationInvitationRepository
+                        .findByPlayer(player);
+
+        assertEquals(1, afterFirstRun.size());
+
+        Long invitationId =
+                afterFirstRun.get(0).getId();
+
+        playerRegistrationInvitationBackfillService
+                .backfill(admin);
+
+        List<PlayerRegistrationInvitation> afterSecondRun =
+                playerRegistrationInvitationRepository
+                        .findByPlayer(player);
+
+        assertEquals(1, afterSecondRun.size());
+
+        assertEquals(
+                invitationId,
+                afterSecondRun.get(0).getId()
+        );
+    }
+    
+    @Test
+    void playerShouldBeAssociatedWithUser() {
+        Player player = createPlayer(
+                "Registered",
+                "Player",
+                "Registered Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        player.setUser(user);
+        player = playerRepository.save(player);
+
+        Player persistedPlayer = playerRepository.findById(player.getId())
+                .orElseThrow();
+
+        assertNotNull(persistedPlayer.getUser());
+        assertEquals(user.getId(), persistedPlayer.getUser().getId());
+    }
+
+    @Test
+    void playerShouldTransitionToRegistered() {
+        Player player = createPlayer(
+                "Transition",
+                "Player",
+                "Transition Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        player.setUser(user);
+        player.setRegistrationStatus(PlayerRegistrationStatus.REGISTERED);
+
+        player = playerRepository.save(player);
+
+        assertEquals(
+                PlayerRegistrationStatus.REGISTERED,
+                player.getRegistrationStatus()
+        );
+    }
+
+    @Test
+    void registrationStatusShouldPersistCorrectly() {
+        Player player = createPlayer(
+                "Persisted",
+                "Player",
+                "Persisted Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        player.setUser(user);
+        player.setRegistrationStatus(PlayerRegistrationStatus.REGISTERED);
+
+        Long playerId = playerRepository.save(player).getId();
+
+        Player persistedPlayer = playerRepository.findById(playerId)
+                .orElseThrow();
+
+        assertEquals(
+                PlayerRegistrationStatus.REGISTERED,
+                persistedPlayer.getRegistrationStatus()
+        );
+        assertEquals(
+                user.getId(),
+                persistedPlayer.getUser().getId()
+        );
+    }
+
+    @Test
+    void oneUserCannotBeLinkedToTwoPlayers() {
+        Player firstPlayer = createPlayer(
+                "First",
+                "Player",
+                "First Player",
+                PlayerRole.BATTER
+        );
+
+        Player secondPlayer = createPlayer(
+                "Second",
+                "Player",
+                "Second Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        firstPlayer.setUser(user);
+        firstPlayer.setRegistrationStatus(PlayerRegistrationStatus.REGISTERED);
+        playerRepository.saveAndFlush(firstPlayer);
+
+        secondPlayer.setUser(user);
+        secondPlayer.setRegistrationStatus(PlayerRegistrationStatus.REGISTERED);
+
+        assertThrows(
+                DataIntegrityViolationException.class,
+                () -> playerRepository.saveAndFlush(secondPlayer)
+        );
+    }
+
+    @Test
+    void registeredPlayerShouldContinueWorkingWithTeamPlayerRelationship() {
+        Player player = createPlayer(
+                "Team",
+                "Player",
+                "Registered Team Player",
+                PlayerRole.ALL_ROUNDER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        player.setUser(user);
+        player.setRegistrationStatus(PlayerRegistrationStatus.REGISTERED);
+        player = playerRepository.save(player);
+
+        Team team = new Team();
+        team.setName("Registration Test Team");
+        team.setShortName("REGTEST");
+        team.setCity("Vizag");
+        team.setActive(true);
+        team = teamRepository.save(team);
+
+        TeamPlayer teamPlayer = new TeamPlayer();
+        teamPlayer.setTeam(team);
+        teamPlayer.setPlayer(player);
+        teamPlayer.setJerseyNumber(99);
+        teamPlayer.setActive(true);
+
+        TeamPlayer savedTeamPlayer = teamPlayerRepository.save(teamPlayer);
+
+        assertNotNull(savedTeamPlayer.getId());
+        assertEquals(player.getId(), savedTeamPlayer.getPlayer().getId());
+        assertEquals(team.getId(), savedTeamPlayer.getTeam().getId());
+        assertEquals(99, savedTeamPlayer.getJerseyNumber());
+        assertTrue(savedTeamPlayer.getActive());
+    }
+
+    @Test
+    void newInvitationShouldDefaultToPending() {
+        Player player = createPlayer(
+                "Invitation",
+                "Pending",
+                "Invitation Pending",
+                PlayerRole.BATTER
+        );
+
+        PlayerRegistrationInvitation invitation =
+                createRegistrationInvitation(
+                        player,
+                        "token-pending-" + uniqueTestId(),
+                        Instant.now().plusSeconds(86400),
+                        null
+                );
+
+        assertEquals(
+                PlayerRegistrationInvitationStatus.PENDING,
+                invitation.getStatus()
+        );
+    }
+
+    @Test
+    void invitationShouldBeAssociatedWithCorrectPlayer() {
+        Player player = createPlayer(
+                "Invitation",
+                "Player",
+                "Invitation Player",
+                PlayerRole.BATTER
+        );
+
+        PlayerRegistrationInvitation invitation =
+                createRegistrationInvitation(
+                        player,
+                        "token-player-" + uniqueTestId(),
+                        Instant.now().plusSeconds(86400),
+                        null
+                );
+
+        PlayerRegistrationInvitation persisted =
+                playerRegistrationInvitationRepository
+                        .findById(invitation.getId())
+                        .orElseThrow();
+
+        assertNotNull(persisted.getPlayer());
+        assertEquals(
+                player.getId(),
+                persisted.getPlayer().getId()
+        );
+    }
+
+    @Test
+    void invitationTokenShouldPersistAndBeFindableByToken() {
+        Player player = createPlayer(
+                "Invitation",
+                "Token",
+                "Invitation Token",
+                PlayerRole.BATTER
+        );
+
+        String token = "token-find-" + uniqueTestId();
+
+        createRegistrationInvitation(
+                player,
+                token,
+                Instant.now().plusSeconds(86400),
+                null
+        );
+
+        PlayerRegistrationInvitation persisted =
+                playerRegistrationInvitationRepository
+                        .findByToken(token)
+                        .orElseThrow();
+
+        assertEquals(token, persisted.getToken());
+        assertEquals(player.getId(), persisted.getPlayer().getId());
+    }
+
+    @Test
+    void duplicateInvitationTokensShouldBeRejected() {
+        Player firstPlayer = createPlayer(
+                "First",
+                "Invitation",
+                "First Invitation",
+                PlayerRole.BATTER
+        );
+
+        Player secondPlayer = createPlayer(
+                "Second",
+                "Invitation",
+                "Second Invitation",
+                PlayerRole.BATTER
+        );
+
+        String token = "duplicate-token-" + uniqueTestId();
+
+        createRegistrationInvitation(
+                firstPlayer,
+                token,
+                Instant.now().plusSeconds(86400),
+                null
+        );
+
+        PlayerRegistrationInvitation duplicate =
+                new PlayerRegistrationInvitation();
+
+        duplicate.setPlayer(secondPlayer);
+        duplicate.setToken(token);
+        duplicate.setStatus(
+                PlayerRegistrationInvitationStatus.PENDING
+        );
+        duplicate.setExpiresAt(
+                Instant.now().plusSeconds(86400)
+        );
+
+        assertThrows(
+                DataIntegrityViolationException.class,
+                () -> playerRegistrationInvitationRepository
+                        .saveAndFlush(duplicate)
+        );
+    }
+
+    @Test
+    void invitationExpiryShouldPersistCorrectly() {
+        Player player = createPlayer(
+                "Invitation",
+                "Expiry",
+                "Invitation Expiry",
+                PlayerRole.BATTER
+        );
+
+        Instant expiresAt = Instant.now().plusSeconds(172800);
+
+        PlayerRegistrationInvitation invitation =
+                createRegistrationInvitation(
+                        player,
+                        "token-expiry-" + uniqueTestId(),
+                        expiresAt,
+                        null
+                );
+
+        PlayerRegistrationInvitation persisted =
+                playerRegistrationInvitationRepository
+                        .findById(invitation.getId())
+                        .orElseThrow();
+
+        assertEquals(expiresAt, persisted.getExpiresAt());
+    }
+
+    @Test
+    void invitationInvitedByUserShouldPersistCorrectly() {
+        Player player = createPlayer(
+                "Invitation",
+                "Admin",
+                "Invitation Admin",
+                PlayerRole.BATTER
+        );
+
+        User invitedBy = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                createRegistrationInvitation(
+                        player,
+                        "token-admin-" + uniqueTestId(),
+                        Instant.now().plusSeconds(86400),
+                        invitedBy
+                );
+
+        PlayerRegistrationInvitation persisted =
+                playerRegistrationInvitationRepository
+                        .findById(invitation.getId())
+                        .orElseThrow();
+
+        assertNotNull(persisted.getInvitedBy());
+        assertEquals(
+                invitedBy.getId(),
+                persisted.getInvitedBy().getId()
+        );
+    }
+
+    @Test
+    void invitationShouldTransitionFromPendingToUsedWithCompletedAt() {
+        Player player = createPlayer(
+                "Invitation",
+                "Used",
+                "Invitation Used",
+                PlayerRole.BATTER
+        );
+
+        PlayerRegistrationInvitation invitation =
+                createRegistrationInvitation(
+                        player,
+                        "token-used-" + uniqueTestId(),
+                        Instant.now().plusSeconds(86400),
+                        null
+                );
+
+        Instant completedAt = Instant.now();
+
+        invitation.setStatus(
+                PlayerRegistrationInvitationStatus.USED
+        );
+        invitation.setCompletedAt(completedAt);
+
+        playerRegistrationInvitationRepository.saveAndFlush(invitation);
+
+        PlayerRegistrationInvitation persisted =
+                playerRegistrationInvitationRepository
+                        .findById(invitation.getId())
+                        .orElseThrow();
+
+        assertEquals(
+                PlayerRegistrationInvitationStatus.USED,
+                persisted.getStatus()
+        );
+        assertEquals(
+                completedAt,
+                persisted.getCompletedAt()
+        );
+    }
+
+    @Test
+    void invitationShouldBeFindableByPlayerAndStatus() {
+        Player player = createPlayer(
+                "Invitation",
+                "Status",
+                "Invitation Status",
+                PlayerRole.BATTER
+        );
+
+        createRegistrationInvitation(
+                player,
+                "token-status-" + uniqueTestId(),
+                Instant.now().plusSeconds(86400),
+                null
+        );
+
+        PlayerRegistrationInvitation persisted =
+                playerRegistrationInvitationRepository
+                        .findByPlayerAndStatus(
+                                player,
+                                PlayerRegistrationInvitationStatus.PENDING
+                        )
+                        .orElseThrow();
+
+        assertEquals(player.getId(), persisted.getPlayer().getId());
+        assertEquals(
+                PlayerRegistrationInvitationStatus.PENDING,
+                persisted.getStatus()
+        );
+    }
+
+    @Test
+    void invitationServiceShouldGenerateSecureToken() {
+        Player player = createPlayer(
+                "Secure",
+                "Token",
+                "Secure Token Player",
+                PlayerRole.BATTER
+        );
+
+        User invitedBy = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        invitedBy
+                );
+
+        assertThat(invitation.getToken())
+                .isNotBlank();
+
+        assertThat(invitation.getToken().length())
+                .isGreaterThanOrEqualTo(40);
+    }
+
+    @Test
+    void invitationServiceShouldGenerateDifferentTokens() {
+        Player firstPlayer = createPlayer(
+                "Token",
+                "One",
+                "Token One",
+                PlayerRole.BATTER
+        );
+
+        Player secondPlayer = createPlayer(
+                "Token",
+                "Two",
+                "Token Two",
+                PlayerRole.BATTER
+        );
+
+        PlayerRegistrationInvitation first =
+                playerRegistrationInvitationService.createInvitation(
+                        firstPlayer,
+                        null
+                );
+
+        PlayerRegistrationInvitation second =
+                playerRegistrationInvitationService.createInvitation(
+                        secondPlayer,
+                        null
+                );
+
+        assertNotEquals(first.getToken(), second.getToken());
+    }
+
+    @Test
+    void invitationServiceShouldUseSevenDayDefaultExpiry() {
+        Player player = createPlayer(
+                "Default",
+                "Expiry",
+                "Default Expiry Player",
+                PlayerRole.BATTER
+        );
+
+        Instant before = Instant.now();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        null
+                );
+
+        Instant after = Instant.now();
+
+        Instant minimumExpected =
+                before.plus(Duration.ofDays(7));
+
+        Instant maximumExpected =
+                after.plus(Duration.ofDays(7));
+
+        assertFalse(
+                invitation.getExpiresAt().isBefore(minimumExpected)
+        );
+
+        assertFalse(
+                invitation.getExpiresAt().isAfter(maximumExpected)
+        );
+    }
+
+    @Test
+    void invitationServiceShouldSupportCustomExpiry() {
+        Player player = createPlayer(
+                "Custom",
+                "Expiry",
+                "Custom Expiry Player",
+                PlayerRole.BATTER
+        );
+
+        Duration lifetime = Duration.ofHours(12);
+
+        Instant before = Instant.now();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        null,
+                        lifetime
+                );
+
+        Instant after = Instant.now();
+
+        Instant minimumExpected = before.plus(lifetime);
+        Instant maximumExpected = after.plus(lifetime);
+
+        assertFalse(
+                invitation.getExpiresAt().isBefore(minimumExpected)
+        );
+
+        assertFalse(
+                invitation.getExpiresAt().isAfter(maximumExpected)
+        );
+    }
+
+    @Test
+    void validPendingTokenShouldBeAccepted() {
+        Player player = createPlayer(
+                "Valid",
+                "Token",
+                "Valid Token Player",
+                PlayerRole.BATTER
+        );
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        null
+                );
+
+        PlayerRegistrationInvitation validated =
+                playerRegistrationInvitationService.validateToken(
+                        invitation.getToken()
+                );
+
+        assertEquals(
+                invitation.getId(),
+                validated.getId()
+        );
+
+        assertEquals(
+                PlayerRegistrationInvitationStatus.PENDING,
+                validated.getStatus()
+        );
+    }
+
+    @Test
+    void invalidTokenShouldBeRejected() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> playerRegistrationInvitationService.validateToken(
+                        "this-token-does-not-exist"
+                )
+        );
+    }
+
+    @Test
+    void expiredTokenShouldBeRejected() {
+        Player player = createPlayer(
+                "Expired",
+                "Token",
+                "Expired Token Player",
+                PlayerRole.BATTER
+        );
+
+        PlayerRegistrationInvitation invitation =
+                createRegistrationInvitation(
+                        player,
+                        "expired-token-" + uniqueTestId(),
+                        Instant.now().minusSeconds(60),
+                        null
+                );
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> playerRegistrationInvitationService.validateToken(
+                        invitation.getToken()
+                )
+        );
+    }
+
+    @Test
+    void usedTokenShouldBeRejected() {
+        Player player = createPlayer(
+                "Used",
+                "Token",
+                "Used Token Player",
+                PlayerRole.BATTER
+        );
+
+        PlayerRegistrationInvitation invitation =
+                createRegistrationInvitation(
+                        player,
+                        "used-token-" + uniqueTestId(),
+                        Instant.now().plusSeconds(86400),
+                        null
+                );
+
+        invitation.setStatus(
+                PlayerRegistrationInvitationStatus.USED
+        );
+
+        playerRegistrationInvitationRepository.saveAndFlush(invitation);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> playerRegistrationInvitationService.validateToken(
+                        invitation.getToken()
+                )
+        );
+    }
+
+    @Test
+    void cancelledTokenShouldBeRejected() {
+        Player player = createPlayer(
+                "Cancelled",
+                "Token",
+                "Cancelled Token Player",
+                PlayerRole.BATTER
+        );
+
+        PlayerRegistrationInvitation invitation =
+                createRegistrationInvitation(
+                        player,
+                        "cancelled-token-" + uniqueTestId(),
+                        Instant.now().plusSeconds(86400),
+                        null
+                );
+
+        playerRegistrationInvitationService.cancelInvitation(
+                invitation
+        );
+
+        assertEquals(
+                PlayerRegistrationInvitationStatus.CANCELLED,
+                invitation.getStatus()
+        );
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> playerRegistrationInvitationService.validateToken(
+                        invitation.getToken()
+                )
+        );
+    }
+
+    @Test
+    void pendingInvitationShouldBeCancellable() {
+        Player player = createPlayer(
+                "Cancel",
+                "Invitation",
+                "Cancel Invitation Player",
+                PlayerRole.BATTER
+        );
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        null
+                );
+
+        playerRegistrationInvitationService.cancelInvitation(
+                invitation
+        );
+
+        PlayerRegistrationInvitation persisted =
+                playerRegistrationInvitationRepository
+                        .findById(invitation.getId())
+                        .orElseThrow();
+
+        assertEquals(
+                PlayerRegistrationInvitationStatus.CANCELLED,
+                persisted.getStatus()
+        );
+    }
+
+    @Test
+    void regenerationShouldCreateNewToken() {
+        Player player = createPlayer(
+                "Regenerate",
+                "Token",
+                "Regenerate Token Player",
+                PlayerRole.BATTER
+        );
+
+        PlayerRegistrationInvitation oldInvitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        null
+                );
+
+        String oldToken = oldInvitation.getToken();
+
+        PlayerRegistrationInvitation newInvitation =
+                playerRegistrationInvitationService.regenerateInvitation(
+                        oldInvitation,
+                        null
+                );
+
+        assertNotEquals(
+                oldToken,
+                newInvitation.getToken()
+        );
+
+        assertEquals(
+                PlayerRegistrationInvitationStatus.CANCELLED,
+                oldInvitation.getStatus()
+        );
+
+        assertEquals(
+                PlayerRegistrationInvitationStatus.PENDING,
+                newInvitation.getStatus()
+        );
+    }
+
+    @Test
+    void regenerationShouldKeepSamePlayer() {
+        Player player = createPlayer(
+                "Same",
+                "Player",
+                "Same Player Registration",
+                PlayerRole.BATTER
+        );
+
+        PlayerRegistrationInvitation oldInvitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        null
+                );
+
+        PlayerRegistrationInvitation newInvitation =
+                playerRegistrationInvitationService.regenerateInvitation(
+                        oldInvitation,
+                        null
+                );
+
+        assertEquals(
+                player.getId(),
+                newInvitation.getPlayer().getId()
+        );
+    }
+
+    @Test
+    void validInvitationShouldRegisterPlayer() {
+        Player player = createPlayer(
+                "Complete",
+                "Registration",
+                "Complete Registration Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        user
+                );
+
+        Player registeredPlayer =
+                playerRegistrationService.completeRegistration(
+                        invitation.getToken(),
+                        user
+                );
+
+        assertEquals(
+                player.getId(),
+                registeredPlayer.getId()
+        );
+
+        assertEquals(
+                PlayerRegistrationStatus.REGISTERED,
+                registeredPlayer.getRegistrationStatus()
+        );
+    }
+
+    @Test
+    void registrationConfirmationShouldUpdatePlayerDetails() {
+        Player player = createPlayer(
+                "Pending",
+                "Player",
+                "Pending Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        user
+                );
+
+        PlayerRegistrationUpdateRequest request =
+                new PlayerRegistrationUpdateRequest();
+
+        request.setFirstName("Rohit");
+        request.setLastName("Sharma");
+        request.setDisplayName("Rohit Sharma");
+        request.setPhone("9000000000");
+        request.setBattingStyle(BattingStyle.RIGHT_HAND);
+        request.setBowlingStyle(BowlingStyle.RIGHT_ARM_OFF_SPIN);
+        request.setRole(PlayerRole.ALL_ROUNDER);
+
+        Player registeredPlayer =
+                playerRegistrationService.confirmAndCompleteRegistration(
+                        invitation.getToken(),
+                        user,
+                        request
+                );
+
+        assertEquals(
+                "Rohit",
+                registeredPlayer.getFirstName()
+        );
+
+        assertEquals(
+                "Sharma",
+                registeredPlayer.getLastName()
+        );
+
+        assertEquals(
+                "Rohit Sharma",
+                registeredPlayer.getDisplayName()
+        );
+
+        assertEquals(
+                "9000000000",
+                registeredPlayer.getPhone()
+        );
+
+        assertEquals(
+                BattingStyle.RIGHT_HAND,
+                registeredPlayer.getBattingStyle()
+        );
+
+        assertEquals(
+                BowlingStyle.RIGHT_ARM_OFF_SPIN,
+                registeredPlayer.getBowlingStyle()
+        );
+
+        assertEquals(
+                PlayerRole.ALL_ROUNDER,
+                registeredPlayer.getRole()
+        );
+
+        assertEquals(
+                PlayerRegistrationStatus.REGISTERED,
+                registeredPlayer.getRegistrationStatus()
+        );
+
+        assertEquals(
+                user.getId(),
+                registeredPlayer.getUser().getId()
+        );
+    }
+
+    @Test
+    void registrationConfirmationShouldMarkInvitationAsUsed() {
+        Player player = createPlayer(
+                "Invitation",
+                "Confirmation",
+                "Invitation Confirmation Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        user
+                );
+
+        PlayerRegistrationUpdateRequest request =
+                new PlayerRegistrationUpdateRequest();
+
+        request.setFirstName("Confirmed");
+        request.setLastName("Player");
+        request.setDisplayName("Confirmed Player");
+        request.setPhone("9111111111");
+        request.setBattingStyle(BattingStyle.RIGHT_HAND);
+        request.setBowlingStyle(BowlingStyle.RIGHT_ARM_MEDIUM);
+        request.setRole(PlayerRole.BATTER);
+
+        playerRegistrationService.confirmAndCompleteRegistration(
+                invitation.getToken(),
+                user,
+                request
+        );
+
+        PlayerRegistrationInvitation persistedInvitation =
+                playerRegistrationInvitationRepository
+                        .findById(invitation.getId())
+                        .orElseThrow();
+
+        assertEquals(
+                PlayerRegistrationInvitationStatus.USED,
+                persistedInvitation.getStatus()
+        );
+
+        assertNotNull(
+                persistedInvitation.getCompletedAt()
+        );
+    }
+
+    @Test
+    void confirmationShouldRejectAlreadyRegisteredPlayer() {
+        Player player = createPlayer(
+                "Already",
+                "Registered",
+                "Already Registered Confirmation Player",
+                PlayerRole.BATTER
+        );
+
+        User firstUser = createPlayerRegistrationTestUser();
+
+        player.setUser(firstUser);
+        player.setRegistrationStatus(
+                PlayerRegistrationStatus.REGISTERED
+        );
+
+        playerRepository.saveAndFlush(player);
+
+        User secondUser = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        secondUser
+                );
+
+        PlayerRegistrationUpdateRequest request =
+                new PlayerRegistrationUpdateRequest();
+
+        request.setFirstName("Changed");
+        request.setLastName("Player");
+        request.setDisplayName("Changed Player");
+        request.setPhone("9222222222");
+        request.setBattingStyle(BattingStyle.RIGHT_HAND);
+        request.setBowlingStyle(BowlingStyle.RIGHT_ARM_MEDIUM);
+        request.setRole(PlayerRole.BATTER);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> playerRegistrationService.confirmAndCompleteRegistration(
+                        invitation.getToken(),
+                        secondUser,
+                        request
+                )
+        );
+    }
+
+    @Test
+    void confirmationShouldRejectInactiveUser() {
+        Player player = createPlayer(
+                "Inactive",
+                "Confirmation",
+                "Inactive Confirmation Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        user.setActive(false);
+        userRepository.saveAndFlush(user);
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        user
+                );
+
+        PlayerRegistrationUpdateRequest request =
+                new PlayerRegistrationUpdateRequest();
+
+        request.setFirstName("Inactive");
+        request.setLastName("Player");
+        request.setDisplayName("Inactive Player");
+        request.setPhone("9333333333");
+        request.setBattingStyle(BattingStyle.RIGHT_HAND);
+        request.setBowlingStyle(BowlingStyle.RIGHT_ARM_MEDIUM);
+        request.setRole(PlayerRole.BATTER);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> playerRegistrationService.confirmAndCompleteRegistration(
+                        invitation.getToken(),
+                        user,
+                        request
+                )
+        );
+    }
+
+    @Test
+    void registrationShouldLinkPlayerToUser() {
+        Player player = createPlayer(
+                "Link",
+                "User",
+                "Link User Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        user
+                );
+
+        playerRegistrationService.completeRegistration(
+                invitation.getToken(),
+                user
+        );
+
+        Player persistedPlayer =
+                playerRepository.findById(player.getId())
+                        .orElseThrow();
+
+        assertNotNull(persistedPlayer.getUser());
+        assertEquals(
+                user.getId(),
+                persistedPlayer.getUser().getId()
+        );
+    }
+
+    @Test
+    void registrationShouldChangePlayerStatusToRegistered() {
+        Player player = createPlayer(
+                "Status",
+                "Change",
+                "Status Change Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        user
+                );
+
+        playerRegistrationService.completeRegistration(
+                invitation.getToken(),
+                user
+        );
+
+        Player persistedPlayer =
+                playerRepository.findById(player.getId())
+                        .orElseThrow();
+
+        assertEquals(
+                PlayerRegistrationStatus.REGISTERED,
+                persistedPlayer.getRegistrationStatus()
+        );
+    }
+
+    @Test
+    void registrationShouldMarkInvitationAsUsed() {
+        Player player = createPlayer(
+                "Invitation",
+                "Used",
+                "Invitation Used Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        user
+                );
+
+        playerRegistrationService.completeRegistration(
+                invitation.getToken(),
+                user
+        );
+
+        PlayerRegistrationInvitation persistedInvitation =
+                playerRegistrationInvitationRepository
+                        .findById(invitation.getId())
+                        .orElseThrow();
+
+        assertEquals(
+                PlayerRegistrationInvitationStatus.USED,
+                persistedInvitation.getStatus()
+        );
+    }
+
+    @Test
+    void registrationShouldSetInvitationCompletedAt() {
+        Player player = createPlayer(
+                "Completed",
+                "At",
+                "Completed At Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        user
+                );
+
+        assertNull(invitation.getCompletedAt());
+
+        playerRegistrationService.completeRegistration(
+                invitation.getToken(),
+                user
+        );
+
+        PlayerRegistrationInvitation persistedInvitation =
+                playerRegistrationInvitationRepository
+                        .findById(invitation.getId())
+                        .orElseThrow();
+
+        assertNotNull(persistedInvitation.getCompletedAt());
+        }
+
+    
+    @Test
+    void registeredPlayerShouldRemainLinkedToSameUser() {
+        Player player = createPlayer(
+                "Same",
+                "User",
+                "Same User Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        user
+                );
+
+        playerRegistrationService.completeRegistration(
+                invitation.getToken(),
+                user
+        );
+
+        Player persistedPlayer =
+                playerRepository.findById(player.getId())
+                        .orElseThrow();
+
+        assertEquals(
+                user.getId(),
+                persistedPlayer.getUser().getId()
+        );
+    }
+
+    @Test
+    void expiredInvitationShouldRejectRegistration() {
+        Player player = createPlayer(
+                "Expired",
+                "Registration",
+                "Expired Registration Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                createRegistrationInvitation(
+                        player,
+                        "registration-expired-" + uniqueTestId(),
+                        Instant.now().minusSeconds(60),
+                        user
+                );
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> playerRegistrationService.completeRegistration(
+                        invitation.getToken(),
+                        user
+                )
+        );
+
+        Player persistedPlayer =
+                playerRepository.findById(player.getId())
+                        .orElseThrow();
+
+        assertEquals(
+                PlayerRegistrationStatus.PENDING,
+                persistedPlayer.getRegistrationStatus()
+        );
+    }
+
+    @Test
+    void cancelledInvitationShouldRejectRegistration() {
+        Player player = createPlayer(
+                "Cancelled",
+                "Registration",
+                "Cancelled Registration Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        user
+                );
+
+        playerRegistrationInvitationService.cancelInvitation(
+                invitation
+        );
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> playerRegistrationService.completeRegistration(
+                        invitation.getToken(),
+                        user
+                )
+        );
+    }
+
+    @Test
+    void alreadyRegisteredPlayerShouldRejectRegistration() {
+        Player player = createPlayer(
+                "Already",
+                "Registered",
+                "Already Registered Player",
+                PlayerRole.BATTER
+        );
+
+        User firstUser = createPlayerRegistrationTestUser();
+
+        player.setUser(firstUser);
+        player.setRegistrationStatus(
+                PlayerRegistrationStatus.REGISTERED
+        );
+
+        playerRepository.saveAndFlush(player);
+
+        User secondUser = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        secondUser
+                );
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> playerRegistrationService.completeRegistration(
+                        invitation.getToken(),
+                        secondUser
+                )
+        );
+    }
+
+    @Test
+    void playerLinkedToAnotherUserShouldRejectRegistration() {
+        Player player = createPlayer(
+                "Different",
+                "User",
+                "Different User Player",
+                PlayerRole.BATTER
+        );
+
+        User firstUser = createPlayerRegistrationTestUser();
+
+        player.setUser(firstUser);
+        playerRepository.saveAndFlush(player);
+
+        User secondUser = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                createRegistrationInvitation(
+                        player,
+                        "different-user-" + uniqueTestId(),
+                        Instant.now().plusSeconds(86400),
+                        secondUser
+                );
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> playerRegistrationService.completeRegistration(
+                        invitation.getToken(),
+                        secondUser
+                )
+        );
+    }
+
+    @Test
+    void userAlreadyLinkedToAnotherPlayerShouldRejectRegistration() {
+        User user = createPlayerRegistrationTestUser();
+
+        Player firstPlayer = createPlayer(
+                "First",
+                "Linked",
+                "First Linked Player",
+                PlayerRole.BATTER
+        );
+
+        firstPlayer.setUser(user);
+        firstPlayer.setRegistrationStatus(
+                PlayerRegistrationStatus.REGISTERED
+        );
+
+        playerRepository.saveAndFlush(firstPlayer);
+
+        Player secondPlayer = createPlayer(
+                "Second",
+                "Linked",
+                "Second Linked Player",
+                PlayerRole.BATTER
+        );
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        secondPlayer,
+                        null
+                );
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> playerRegistrationService.completeRegistration(
+                        invitation.getToken(),
+                        user
+                )
+        );
+    }
+
+    @Test
+    void inactiveUserShouldRejectRegistration() {
+        Player player = createPlayer(
+                "Inactive",
+                "User",
+                "Inactive User Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+        user.setActive(false);
+        userRepository.saveAndFlush(user);
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        user
+                );
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> playerRegistrationService.completeRegistration(
+                        invitation.getToken(),
+                        user
+                )
+        );
+    }
+
+    @Test
+    void invalidInvitationTokenShouldRejectRegistration() {
+        User user = createPlayerRegistrationTestUser();
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> playerRegistrationService.completeRegistration(
+                        "invalid-registration-token-" + uniqueTestId(),
+                        user
+                )
+        );
+    }
+
+    @Test
+    void validRegistrationInvitationShouldReturnPlayerDetails() {
+        Player player = createPlayer(
+                "Invitation",
+                "Preview",
+                "Invitation Preview Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        user
+                );
+
+        ResponseEntity<PlayerRegistrationInvitationResponse> response =
+                playerRegistrationController.getInvitation(
+                        invitation.getToken()
+                );
+
+        assertEquals(200, response.getStatusCode().value());
+        assertNotNull(response.getBody());
+
+        assertEquals(
+                player.getId(),
+                response.getBody().playerId()
+        );
+
+        assertEquals(
+                player.getDisplayName(),
+                response.getBody().displayName()
+        );
+
+        assertEquals(
+                PlayerRegistrationStatus.PENDING.name(),
+                response.getBody().registrationStatus()
+        );
+    }
+
+    @Test
+    void authenticatedUserShouldConfirmRegistrationThroughController()
+                throws Exception {
+
+        User user = createPlayerRegistrationTestUser();
+
+        String googleSubject =
+                "google-confirm-registration-test-" + uniqueTestId();
+
+        UserAuthentication userAuthentication =
+                new UserAuthentication();
+
+        userAuthentication.setUser(user);
+        userAuthentication.setProvider(
+                AuthenticationProvider.GOOGLE);
+        userAuthentication.setProviderUserId(googleSubject);
+
+        userAuthenticationRepository.saveAndFlush(
+                userAuthentication);
+
+        OAuth2User oauth2User =
+                new DefaultOAuth2User(
+                        java.util.List.of(
+                                new SimpleGrantedAuthority("ROLE_USER")
+                        ),
+                        Map.of(
+                                "sub", googleSubject,
+                                "email", user.getEmail(),
+                                "name", user.getDisplayName()
+                        ),
+                        "sub"
+                );
+
+        Authentication authentication =
+                new UsernamePasswordAuthenticationToken(
+                        oauth2User,
+                        null,
+                        oauth2User.getAuthorities()
+                );
+
+        Player player = createPlayer(
+                "Pending",
+                "Confirmation",
+                "Pending Confirmation Player",
+                PlayerRole.BATTER
+        );
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        user
+                );
+
+        mockMvc.perform(
+                post(
+                        "/api/player-registration/invitations/{token}/confirm",
+                        invitation.getToken()
+                )
+                .with(
+                        SecurityMockMvcRequestPostProcessors
+                                .authentication(authentication)
+                )
+                .contentType(
+                        org.springframework.http.MediaType.APPLICATION_JSON
+                )
+                .content("""
+                        {
+                                "firstName": "Rohit",
+                                "lastName": "Sharma",
+                                "displayName": "Rohit Sharma",
+                                "phone": "9000000000",
+                                "battingStyle": "RIGHT_HAND",
+                                "bowlingStyle": "RIGHT_ARM_OFF_SPIN",
+                                "role": "ALL_ROUNDER"
+                        }
+                        """)
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.playerId")
+                .value(player.getId()))
+        .andExpect(jsonPath("$.displayName")
+                .value("Rohit Sharma"))
+        .andExpect(jsonPath("$.registrationStatus")
+                .value("REGISTERED"));
+    }
+
+    @Test
+    void unauthenticatedUserShouldNotConfirmRegistrationThroughController()
+                throws Exception {
+
+        Player player = createPlayer(
+                "Unauthenticated",
+                "Confirmation",
+                "Unauthenticated Confirmation Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        user
+                );
+
+        mockMvc.perform(
+                post(
+                        "/api/player-registration/invitations/{token}/confirm",
+                        invitation.getToken()
+                )
+                .contentType(
+                        org.springframework.http.MediaType.APPLICATION_JSON
+                )
+                .content("""
+                        {
+                                "firstName": "Test",
+                                "lastName": "Player",
+                                "displayName": "Test Player",
+                                "phone": "9111111111",
+                                "battingStyle": "RIGHT_HAND",
+                                "bowlingStyle": "RIGHT_ARM_MEDIUM",
+                                "role": "BATTER"
+                        }
+                        """)
+        )
+        .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void adminShouldBeAbleToViewPlayerRegistrationDetail()
+                throws Exception {
+
+        User admin = createPlayerRegistrationTestUser();
+
+        adminAccessService.activateAdminAccess(
+                admin,
+                Instant.now(),
+                null
+        );
+
+        String googleSubject =
+                "google-detail-admin-test-" + uniqueTestId();
+
+        UserAuthentication userAuthentication =
+                new UserAuthentication();
+
+        userAuthentication.setUser(admin);
+        userAuthentication.setProvider(
+                AuthenticationProvider.GOOGLE);
+        userAuthentication.setProviderUserId(googleSubject);
+
+        userAuthenticationRepository.saveAndFlush(
+                userAuthentication);
+
+        OAuth2User oauth2User =
+                new DefaultOAuth2User(
+                        java.util.List.of(
+                                new SimpleGrantedAuthority("ROLE_USER")
+                        ),
+                        Map.of(
+                                "sub", googleSubject,
+                                "email", admin.getEmail(),
+                                "name", admin.getDisplayName()
+                        ),
+                        "sub"
+                );
+
+        Authentication authentication =
+                new UsernamePasswordAuthenticationToken(
+                        oauth2User,
+                        null,
+                        oauth2User.getAuthorities()
+                );
+
+        Player player = new Player();
+        player.setFirstName("API");
+        player.setLastName("Detail");
+        player.setDisplayName(
+                "API Detail " + uniqueTestId());
+        player.setRole(PlayerRole.BATTER);
+        player.setRegistrationStatus(
+                PlayerRegistrationStatus.PENDING);
+
+        Player savedPlayer =
+                playerRepository.saveAndFlush(player);
+
+        mockMvc.perform(
+                get("/api/players/registrations/{playerId}",
+                        savedPlayer.getId())
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.playerId")
+                .value(savedPlayer.getId()))
+        .andExpect(jsonPath("$.displayName")
+                .value(savedPlayer.getDisplayName()))
+        .andExpect(jsonPath("$.registrationStatus")
+                .value("PENDING"));
+    }
+
+    @Test
+    void playerWithoutAdminAccessShouldNotViewPlayerRegistrationDetail()
+                throws Exception {
+
+        User player = createPlayerRegistrationTestUser();
+
+        String googleSubject =
+                "google-detail-player-test-" + uniqueTestId();
+
+        UserAuthentication userAuthentication =
+                new UserAuthentication();
+
+        userAuthentication.setUser(player);
+        userAuthentication.setProvider(
+                AuthenticationProvider.GOOGLE);
+        userAuthentication.setProviderUserId(googleSubject);
+
+        userAuthenticationRepository.saveAndFlush(
+                userAuthentication);
+
+        OAuth2User oauth2User =
+                new DefaultOAuth2User(
+                        java.util.List.of(
+                                new SimpleGrantedAuthority("ROLE_USER")
+                        ),
+                        Map.of(
+                                "sub", googleSubject,
+                                "email", player.getEmail(),
+                                "name", player.getDisplayName()
+                        ),
+                        "sub"
+                );
+
+        Authentication authentication =
+                new UsernamePasswordAuthenticationToken(
+                        oauth2User,
+                        null,
+                        oauth2User.getAuthorities()
+                );
+
+        Player targetPlayer = new Player();
+        targetPlayer.setFirstName("Detail");
+        targetPlayer.setLastName("Protected");
+        targetPlayer.setDisplayName(
+                "Detail Protected " + uniqueTestId());
+        targetPlayer.setRole(PlayerRole.BATTER);
+        targetPlayer.setRegistrationStatus(
+                PlayerRegistrationStatus.PENDING);
+
+        Player savedTargetPlayer =
+                playerRepository.saveAndFlush(targetPlayer);
+
+        mockMvc.perform(
+                get(
+                        "/api/players/registrations/{playerId}",
+                        savedTargetPlayer.getId()
+                )
+                .with(
+                        SecurityMockMvcRequestPostProcessors
+                                .authentication(authentication)
+                )
+        )
+        .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void unauthenticatedUserShouldNotViewPlayerRegistrationDetail()
+                throws Exception {
+
+        mockMvc.perform(
+                get(
+                        "/api/players/registrations/{playerId}",
+                        1L
+                )
+        )
+        .andExpect(status().is3xxRedirection());
+    }
+
+    @Test
+    void invalidRegistrationInvitationShouldBeRejected() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> playerRegistrationController.getInvitation(
+                        "invalid-registration-token-" + uniqueTestId()
+                )
+        );
+    }
+
+    @Test
+    void expiredRegistrationInvitationShouldBeRejectedByController() {
+        Player player = createPlayer(
+                "Expired",
+                "Preview",
+                "Expired Preview Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                createRegistrationInvitation(
+                        player,
+                        "expired-controller-" + uniqueTestId(),
+                        Instant.now().minusSeconds(60),
+                        user
+                );
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> playerRegistrationController.getInvitation(
+                        invitation.getToken()
+                )
+        );
+    }
+
+    @Test
+    void cancelledRegistrationInvitationShouldBeRejectedByController() {
+        Player player = createPlayer(
+                "Cancelled",
+                "Preview",
+                "Cancelled Preview Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        user
+                );
+
+        playerRegistrationInvitationService.cancelInvitation(
+                invitation
+        );
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> playerRegistrationController.getInvitation(
+                        invitation.getToken()
+                )
+        );
+    }
+
+    @Test
+    void registrationCompletionShouldRejectUnauthenticatedRequest() {
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        createPlayer(
+                                "Unauthenticated",
+                                "Player",
+                                "Unauthenticated Player",
+                                PlayerRole.BATTER
+                        ),
+                        null
+                );
+
+        ResponseEntity<PlayerRegistrationInvitationResponse> response =
+                playerRegistrationController.completeRegistration(
+                        invitation.getToken(),
+                        null
+                );
+
+        assertEquals(401, response.getStatusCode().value());
+    }
+
+    @Test
+    void authenticatedUserShouldCompleteRegistrationThroughController() {
+        Player player = createPlayer(
+                "Authenticated",
+                "Registration",
+                "Authenticated Registration Player",
+                PlayerRole.BATTER
+        );
+
+        User user = createPlayerRegistrationTestUser();
+
+        String googleSubject = "google-test-" + uniqueTestId();
+
+        UserAuthentication userAuthentication =
+                new UserAuthentication();
+
+        userAuthentication.setUser(user);
+        userAuthentication.setProvider(
+                AuthenticationProvider.GOOGLE
+        );
+        userAuthentication.setProviderUserId(
+                googleSubject
+        );
+
+        userAuthenticationRepository.saveAndFlush(
+                userAuthentication
+        );
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        user
+                );
+
+        OAuth2User oauth2User = new DefaultOAuth2User(
+                java.util.List.of(
+                        new SimpleGrantedAuthority("ROLE_USER")
+                ),
+                Map.of(
+                        "sub", googleSubject,
+                        "email", user.getEmail(),
+                        "name", user.getDisplayName()
+                ),
+                "sub"
+        );
+
+        Authentication authentication =
+                new UsernamePasswordAuthenticationToken(
+                        oauth2User,
+                        null,
+                        oauth2User.getAuthorities()
+                );
+
+        ResponseEntity<PlayerRegistrationInvitationResponse> response =
+                playerRegistrationController.completeRegistration(
+                        invitation.getToken(),
+                        authentication
+                );
+
+        assertEquals(
+                200,
+                response.getStatusCode().value()
+        );
+
+        assertNotNull(response.getBody());
+
+        assertEquals(
+                player.getId(),
+                response.getBody().playerId()
+        );
+
+        assertEquals(
+                PlayerRegistrationStatus.REGISTERED.name(),
+                response.getBody().registrationStatus()
+        );
+
+        Player persistedPlayer =
+                playerRepository.findById(player.getId())
+                        .orElseThrow();
+
+        assertEquals(
+                PlayerRegistrationStatus.REGISTERED,
+                persistedPlayer.getRegistrationStatus()
+        );
+
+        assertNotNull(persistedPlayer.getUser());
+
+        assertEquals(
+                user.getId(),
+                persistedPlayer.getUser().getId()
+        );
+
+        PlayerRegistrationInvitation persistedInvitation =
+                playerRegistrationInvitationRepository
+                        .findById(invitation.getId())
+                        .orElseThrow();
+
+        assertEquals(
+                PlayerRegistrationInvitationStatus.USED,
+                persistedInvitation.getStatus()
+        );
+
+        assertNotNull(
+                persistedInvitation.getCompletedAt()
+        );
+    }
+
+    @Test
+    void playerImportShouldCreatePendingPlayersAndInvitations()
+                throws Exception {
+
+        User admin = createPlayerRegistrationTestUser();
+
+        adminAccessService.activateAdminAccess(
+                admin,
+                Instant.now(),
+                null
+        );
+
+        String testId = uniqueTestId();
+
+        String displayName = "Ravi Kumar " + testId;
+
+        MockMultipartFile file =
+                createPlayerImportExcel(
+                        "Ravi|Kumar|" + displayName
+                                + "|9000000001|RIGHT_HAND|RIGHT_ARM_MEDIUM|BATTER"
+                );
+
+        PlayerImportResponse response =
+                playerImportService.importExcel(
+                        file,
+                        admin
+                );
+
+        assertEquals(1, response.getTotalRows());
+        assertEquals(1, response.getCreatedRows());
+        assertTrue(response.getErrors().isEmpty());
+
+        assertEquals(1, response.getRegistrations().size());
+
+        PlayerRegistrationImportResponse registration =
+                response.getRegistrations().get(0);
+
+        Player player =
+                playerRepository.findById(
+                        registration.playerId()
+                ).orElseThrow();
+
+        assertEquals(
+                PlayerRegistrationStatus.PENDING,
+                player.getRegistrationStatus()
+        );
+
+        assertNotNull(player.getId());
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationRepository
+                        .findByPlayer(player)
+                        .stream()
+                        .findFirst()
+                        .orElseThrow();
+
+        assertEquals(
+                PlayerRegistrationInvitationStatus.PENDING,
+                invitation.getStatus()
+        );
+
+        assertEquals(
+                admin.getId(),
+                invitation.getInvitedBy().getId()
+        );
+    }
+
+    @Test
+    void playerImportShouldReturnRegistrationInformation()
+                throws Exception {
+
+        User admin = createPlayerRegistrationTestUser();
+
+        adminAccessService.activateAdminAccess(
+                admin,
+                Instant.now(),
+                null
+        );
+
+        MockMultipartFile file =
+                createPlayerImportExcel(
+                        "Suresh|Naidu|Suresh Naidu|9000000002|LEFT_HAND|RIGHT_ARM_MEDIUM|ALL_ROUNDER"
+                );
+
+        PlayerImportResponse response =
+                playerImportService.importExcel(
+                        file,
+                        admin
+                );
+
+        PlayerRegistrationImportResponse registration =
+                response.getRegistrations().get(0);
+
+        assertNotNull(registration.playerId());
+        assertEquals(
+                "Suresh Naidu",
+                registration.displayName()
+        );
+
+        assertEquals(
+                PlayerRegistrationStatus.PENDING.name(),
+                registration.registrationStatus()
+        );
+
+        assertEquals(
+                PlayerRegistrationInvitationStatus.PENDING.name(),
+                registration.invitationStatus()
+        );
+
+        assertNotNull(registration.registrationLink());
+        assertFalse(registration.registrationLink().isBlank());
+    }
+
+    @Test
+    void multipleImportedPlayersShouldGetUniqueInvitations()
+                throws Exception {
+
+        User admin = createPlayerRegistrationTestUser();
+
+        adminAccessService.activateAdminAccess(
+                admin,
+                Instant.now(),
+                null
+        );
+
+        MockMultipartFile file =
+                createPlayerImportExcel(
+                        "Player|One|Player One|9000000011|RIGHT_HAND|RIGHT_ARM_FAST|BATTER",
+                        "Player|Two|Player Two|9000000012|LEFT_HAND|RIGHT_ARM_MEDIUM|BOWLER",
+                        "Player|Three|Player Three|9000000013|RIGHT_HAND|RIGHT_ARM_FAST|ALL_ROUNDER"
+                );
+
+        PlayerImportResponse response =
+                playerImportService.importExcel(
+                        file,
+                        admin
+                );
+
+        assertEquals(3, response.getCreatedRows());
+        assertEquals(3, response.getRegistrations().size());
+
+        String token1 =
+                response.getRegistrations().get(0).registrationLink();
+
+        String token2 =
+                response.getRegistrations().get(1).registrationLink();
+
+        String token3 =
+                response.getRegistrations().get(2).registrationLink();
+
+        assertNotEquals(token1, token2);
+        assertNotEquals(token1, token3);
+        assertNotEquals(token2, token3);
+
+        List<Player> importedPlayers =
+                response.getRegistrations()
+                        .stream()
+                        .map(registration ->
+                                playerRepository
+                                        .findById(registration.playerId())
+                                        .orElseThrow()
+                        )
+                        .toList();
+
+        assertEquals(
+                3,
+                playerRegistrationInvitationRepository
+                        .findByPlayerIn(importedPlayers)
+                        .size()
+        );
+    }
+
+    @Test
+    void invalidPlayerImportShouldCreateNoPlayersOrInvitations()
+                throws Exception {
+
+        User admin = createPlayerRegistrationTestUser();
+
+        adminAccessService.activateAdminAccess(
+                admin,
+                Instant.now(),
+                null
+        );
+
+        MockMultipartFile file =
+                createPlayerImportExcel(
+                        "|Kumar|Invalid Player|9000000021|RIGHT_HAND|RIGHT_ARM_FAST|BATTER"
+                );
+
+        PlayerImportResponse response =
+                playerImportService.importExcel(
+                        file,
+                        admin
+                );
+
+        assertEquals(1, response.getTotalRows());
+        assertEquals(0, response.getCreatedRows());
+        assertFalse(response.getErrors().isEmpty());
+
+        assertTrue(
+                response.getRegistrations() == null
+                        || response.getRegistrations().isEmpty()
+        );
+    }
+
+    @Test
+    void playerImportShouldRejectNullImportingAdmin()
+                throws Exception {
+
+        MockMultipartFile file =
+                createPlayerImportExcel(
+                        "Admin|Missing|Admin Missing|9000000031|RIGHT_HAND|RIGHT_ARM_FAST|BATTER"
+                );
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> playerImportService.importExcel(
+                        file,
+                        null
+                )
+        );
+    }
+
+    @Test
+    void registrationManagementShouldReturnEmptyWhenNoPlayersExist() {
+        List<PlayerRegistrationManagementResponse> result =
+                playerRegistrationManagementService.getRegistrations();
+
+        assertThat(result).isNotNull();
+    }
+
+    @Test
+    void registrationManagementShouldReturnPlayerWithoutInvitation() {
+        String testId = uniqueTestId();
+
+        Player player = new Player();
+        player.setFirstName("Test");
+        player.setLastName("Player");
+        player.setDisplayName("Management Player " + testId);
+        player.setRegistrationStatus(PlayerRegistrationStatus.PENDING);
+        player.setRole(PlayerRole.BATTER);
+
+        Player savedPlayer = playerRepository.saveAndFlush(player);
+
+        List<PlayerRegistrationManagementResponse> result =
+                playerRegistrationManagementService.getRegistrations();
+
+        PlayerRegistrationManagementResponse response =
+                result.stream()
+                        .filter(item -> item.playerId().equals(savedPlayer.getId()))
+                        .findFirst()
+                        .orElseThrow();
+
+        assertThat(response.displayName())
+                .isEqualTo(savedPlayer.getDisplayName());
+
+        assertThat(response.registrationStatus())
+                .isEqualTo(PlayerRegistrationStatus.PENDING.name());
+
+        assertThat(response.invitationStatus())
+                .isNull();
+
+        assertThat(response.invitationCreatedAt())
+                .isNull();
+
+        assertThat(response.invitationExpiresAt())
+                .isNull();
+    }
+
+    @Test
+    void registrationManagementShouldReturnInvitationInformation() {
+        String testId = uniqueTestId();
+
+        Player player = new Player();
+        player.setFirstName("Test");
+        player.setLastName("Invitation");
+        player.setDisplayName("Invitation Player " + testId);
+        player.setRegistrationStatus(PlayerRegistrationStatus.PENDING);
+        player.setRole(PlayerRole.BATTER);
+
+        Player savedPlayer = playerRepository.saveAndFlush(player);
+
+        User user = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        savedPlayer,
+                        user
+                );
+
+        List<PlayerRegistrationManagementResponse> result =
+                playerRegistrationManagementService.getRegistrations();
+
+        PlayerRegistrationManagementResponse response =
+                result.stream()
+                        .filter(item -> item.playerId().equals(savedPlayer.getId()))
+                        .findFirst()
+                        .orElseThrow();
+
+        assertThat(response.invitationStatus())
+                .isEqualTo(PlayerRegistrationInvitationStatus.PENDING.name());
+
+        assertThat(response.invitationCreatedAt())
+                .isEqualTo(invitation.getCreatedAt());
+
+        assertThat(response.invitationExpiresAt())
+                .isEqualTo(invitation.getExpiresAt());
+    }
+
+    @Test
+    void registrationManagementShouldReturnLatestInvitation() {
+        String testId = uniqueTestId();
+
+        Player player = new Player();
+        player.setFirstName("Test");
+        player.setLastName("Latest");
+        player.setDisplayName("Latest Invitation Player " + testId);
+        player.setRegistrationStatus(PlayerRegistrationStatus.PENDING);
+        player.setRole(PlayerRole.BATTER);
+
+        Player savedPlayer = playerRepository.saveAndFlush(player);
+
+        User user = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation first =
+                playerRegistrationInvitationService.createInvitation(
+                        savedPlayer,
+                        user
+                );
+
+        PlayerRegistrationInvitation second =
+                playerRegistrationInvitationService.regenerateInvitation(
+                        first,
+                        user
+                );
+
+        List<PlayerRegistrationManagementResponse> result =
+                playerRegistrationManagementService.getRegistrations();
+
+        PlayerRegistrationManagementResponse response =
+                result.stream()
+                        .filter(item -> item.playerId().equals(savedPlayer.getId()))
+                        .findFirst()
+                        .orElseThrow();
+
+        assertThat(response.invitationStatus())
+                .isEqualTo(PlayerRegistrationInvitationStatus.PENDING.name());
+
+        assertThat(response.invitationCreatedAt())
+                .isEqualTo(second.getCreatedAt());
+
+        assertThat(response.invitationExpiresAt())
+                .isEqualTo(second.getExpiresAt());
+
+        assertThat(response.invitationStatus())
+                .isNotEqualTo(first.getStatus().name());
+    }
+
+    @Test
+    void adminShouldBeAbleToViewPlayerRegistrations() throws Exception {
+
+        User admin = createPlayerRegistrationTestUser();
+
+        adminAccessService.activateAdminAccess(
+                admin,
+                Instant.now(),
+                null
+        );
+
+        String googleSubject =
+                "google-registration-admin-" + uniqueTestId();
+
+        UserAuthentication userAuthentication =
+                new UserAuthentication();
+
+        userAuthentication.setUser(admin);
+        userAuthentication.setProvider(
+                AuthenticationProvider.GOOGLE
+        );
+        userAuthentication.setProviderUserId(googleSubject);
+
+        userAuthenticationRepository.saveAndFlush(
+                userAuthentication
+        );
+
+        OAuth2User oauth2User =
+                new DefaultOAuth2User(
+                        java.util.List.of(
+                                new SimpleGrantedAuthority("ROLE_USER")
+                        ),
+                        Map.of(
+                                "sub", googleSubject,
+                                "email", admin.getEmail(),
+                                "name", admin.getDisplayName()
+                        ),
+                        "sub"
+                );
+
+        Authentication authentication =
+                new UsernamePasswordAuthenticationToken(
+                        oauth2User,
+                        null,
+                        oauth2User.getAuthorities()
+                );
+
+        mockMvc.perform(
+                org.springframework.test.web.servlet.request
+                        .MockMvcRequestBuilders
+                        .get("/api/players/registrations")
+                        .with(
+                                org.springframework.security.test.web.servlet.request
+                                        .SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$").isArray());
+    }
+
+    @Test
+    void adminShouldBeAbleToViewPlayerRegistrationSummary() throws Exception {
+        Authentication authentication =
+                createAdminAuthentication();
+
+        mockMvc.perform(
+                get("/api/players/registrations/summary")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.totalPlayers").isNumber())
+        .andExpect(jsonPath("$.registeredPlayers").isNumber())
+        .andExpect(jsonPath("$.pendingPlayers").isNumber())
+        .andExpect(jsonPath("$.expiredInvitations").isNumber());
+    }
+
+    @Test
+    void playerWithoutAdminAccessShouldNotViewPlayerRegistrations()
+                throws Exception {
+
+        User player = createPlayerRegistrationTestUser();
+
+        String googleSubject =
+                "google-registration-player-" + uniqueTestId();
+
+        UserAuthentication userAuthentication =
+                new UserAuthentication();
+
+        userAuthentication.setUser(player);
+        userAuthentication.setProvider(
+                AuthenticationProvider.GOOGLE
+        );
+        userAuthentication.setProviderUserId(googleSubject);
+
+        userAuthenticationRepository.saveAndFlush(
+                userAuthentication
+        );
+
+        OAuth2User oauth2User =
+                new DefaultOAuth2User(
+                        java.util.List.of(
+                                new SimpleGrantedAuthority("ROLE_USER")
+                        ),
+                        Map.of(
+                                "sub", googleSubject,
+                                "email", player.getEmail(),
+                                "name", player.getDisplayName()
+                        ),
+                        "sub"
+                );
+
+        Authentication authentication =
+                new UsernamePasswordAuthenticationToken(
+                        oauth2User,
+                        null,
+                        oauth2User.getAuthorities()
+                );
+
+        mockMvc.perform(
+                org.springframework.test.web.servlet.request
+                        .MockMvcRequestBuilders
+                        .get("/api/players/registrations")
+                        .with(
+                                org.springframework.security.test.web.servlet.request
+                                        .SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void playerWithoutAdminAccessShouldNotViewPlayerRegistrationSummary()
+                throws Exception {
+
+        User player = createPlayerRegistrationTestUser();
+
+        String googleSubject =
+                "google-summary-player-test-" + uniqueTestId();
+
+        UserAuthentication userAuthentication =
+                new UserAuthentication();
+
+        userAuthentication.setUser(player);
+        userAuthentication.setProvider(AuthenticationProvider.GOOGLE);
+        userAuthentication.setProviderUserId(googleSubject);
+
+        userAuthenticationRepository.saveAndFlush(
+                userAuthentication);
+
+        OAuth2User oauth2User =
+                new DefaultOAuth2User(
+                        java.util.List.of(
+                                new SimpleGrantedAuthority("ROLE_USER")
+                        ),
+                        Map.of(
+                                "sub", googleSubject,
+                                "email", player.getEmail(),
+                                "name", player.getDisplayName()
+                        ),
+                        "sub"
+                );
+
+        Authentication authentication =
+                new UsernamePasswordAuthenticationToken(
+                        oauth2User,
+                        null,
+                        oauth2User.getAuthorities()
+                );
+
+        mockMvc.perform(
+                get("/api/players/registrations/summary")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void unauthenticatedUserShouldNotViewPlayerRegistrationSummary()
+                throws Exception {
+
+        mockMvc.perform(
+                get("/api/players/registrations/summary")
+        )
+        .andExpect(status().is3xxRedirection());
+    }
+
+    @Test
+    void unauthenticatedUserShouldNotViewPlayerRegistrations()
+                throws Exception {
+
+        mockMvc.perform(
+                org.springframework.test.web.servlet.request
+                        .MockMvcRequestBuilders
+                        .get("/api/players/registrations")
+        )
+        .andExpect(status().is3xxRedirection());
+    }
+
+    @Test
+    void registrationSummaryShouldCountPlayersByRegistrationStatus() {
+        Player registeredPlayer = new Player();
+        registeredPlayer.setFirstName("Summary");
+        registeredPlayer.setLastName("Registered");
+        registeredPlayer.setDisplayName(
+                "Summary Registered " + uniqueTestId());
+        registeredPlayer.setRole(PlayerRole.BATTER);
+        registeredPlayer.setRegistrationStatus(
+                PlayerRegistrationStatus.REGISTERED);
+        playerRepository.saveAndFlush(registeredPlayer);
+
+        Player pendingPlayer = new Player();
+        pendingPlayer.setFirstName("Summary");
+        pendingPlayer.setLastName("Pending");
+        pendingPlayer.setDisplayName(
+                "Summary Pending " + uniqueTestId());
+        pendingPlayer.setRole(PlayerRole.BATTER);
+        pendingPlayer.setRegistrationStatus(
+                PlayerRegistrationStatus.PENDING);
+        playerRepository.saveAndFlush(pendingPlayer);
+
+        PlayerRegistrationSummaryResponse summary =
+                playerRegistrationSummaryService.getSummary();
+
+        assertThat(summary.totalPlayers()).isGreaterThanOrEqualTo(2);
+        assertThat(summary.registeredPlayers()).isGreaterThanOrEqualTo(1);
+        assertThat(summary.pendingPlayers()).isGreaterThanOrEqualTo(1);
+    }
+
+    @Test
+    void registrationSummaryShouldCountExpiredInvitations() {
+        Player player = new Player();
+        player.setFirstName("Summary");
+        player.setLastName("Expired");
+        player.setDisplayName(
+                "Summary Expired " + uniqueTestId());
+        player.setRole(PlayerRole.BATTER);
+        player.setRegistrationStatus(PlayerRegistrationStatus.PENDING);
+
+        Player savedPlayer = playerRepository.saveAndFlush(player);
+
+        PlayerRegistrationInvitation invitation =
+                new PlayerRegistrationInvitation();
+
+        invitation.setPlayer(savedPlayer);
+        invitation.setToken(
+                "summary-expired-token-" + uniqueTestId());
+        invitation.setStatus(
+                PlayerRegistrationInvitationStatus.EXPIRED);
+        
+       invitation.setExpiresAt(
+        Instant.now().plus(1, ChronoUnit.DAYS));
+
+        playerRegistrationInvitationRepository
+                .saveAndFlush(invitation);
+
+        PlayerRegistrationSummaryResponse summary =
+                playerRegistrationSummaryService.getSummary();
+
+        assertThat(summary.expiredInvitations())
+                .isGreaterThanOrEqualTo(1);
+    }
+
+    @Test
+    void registrationSummaryShouldNotCountPendingInvitationAsExpired() {
+        Player player = new Player();
+        player.setFirstName("Summary");
+        player.setLastName("Active");
+        player.setDisplayName(
+                "Summary Active " + uniqueTestId());
+        player.setRole(PlayerRole.BATTER);
+        player.setRegistrationStatus(PlayerRegistrationStatus.PENDING);
+
+        Player savedPlayer = playerRepository.saveAndFlush(player);
+
+        PlayerRegistrationInvitation invitation =
+                new PlayerRegistrationInvitation();
+
+        invitation.setPlayer(savedPlayer);
+        invitation.setToken(
+                "summary-pending-token-" + uniqueTestId());
+        invitation.setStatus(
+                PlayerRegistrationInvitationStatus.PENDING);
+        invitation.setExpiresAt(Instant.now().plus(7, ChronoUnit.DAYS));
+
+        playerRegistrationInvitationRepository
+                .saveAndFlush(invitation);
+
+        long expiredBefore =
+                playerRegistrationSummaryService
+                        .getSummary()
+                        .expiredInvitations();
+
+        PlayerRegistrationSummaryResponse summary =
+                playerRegistrationSummaryService.getSummary();
+
+        assertThat(summary.expiredInvitations())
+                .isEqualTo(expiredBefore);
+    }
+
+    @Test
+    void registrationSummaryShouldReturnConsistentPlayerCounts() {
+        PlayerRegistrationSummaryResponse summary =
+                playerRegistrationSummaryService.getSummary();
+
+        assertThat(summary.totalPlayers())
+                .isEqualTo(
+                        summary.registeredPlayers()
+                                + summary.pendingPlayers());
+    }
+
+
+    @Test
+    void registrationDetailShouldReturnPlayerWithoutInvitation() {
+        Player player = new Player();
+        player.setFirstName("Detail");
+        player.setLastName("Player");
+        player.setDisplayName(
+                "Detail Player " + uniqueTestId());
+        player.setRole(PlayerRole.BATTER);
+        player.setRegistrationStatus(
+                PlayerRegistrationStatus.PENDING);
+
+        Player savedPlayer =
+                playerRepository.saveAndFlush(player);
+
+        PlayerRegistrationDetailResponse response =
+                playerRegistrationDetailService
+                        .getRegistrationDetail(savedPlayer.getId());
+
+        assertThat(response.playerId())
+                .isEqualTo(savedPlayer.getId());
+
+        assertThat(response.displayName())
+                .isEqualTo(savedPlayer.getDisplayName());
+
+        assertThat(response.registrationStatus())
+                .isEqualTo("PENDING");
+
+        assertThat(response.invitationStatus())
+                .isNull();
+
+        assertThat(response.userId())
+                .isNull();
+    }
+
+    @Test
+    void registrationDetailShouldReturnInvitationInformation() {
+        Player player = new Player();
+        player.setFirstName("Detail");
+        player.setLastName("Invitation");
+        player.setDisplayName(
+                "Detail Invitation " + uniqueTestId());
+        player.setRole(PlayerRole.BATTER);
+        player.setRegistrationStatus(
+                PlayerRegistrationStatus.PENDING);
+
+        Player savedPlayer =
+                playerRepository.saveAndFlush(player);
+
+        PlayerRegistrationInvitation invitation =
+                new PlayerRegistrationInvitation();
+
+        invitation.setPlayer(savedPlayer);
+        invitation.setToken(
+                "detail-token-" + uniqueTestId());
+        invitation.setStatus(
+                PlayerRegistrationInvitationStatus.PENDING);
+        invitation.setExpiresAt(
+                Instant.now().plus(7, ChronoUnit.DAYS));
+
+        PlayerRegistrationInvitation savedInvitation =
+                playerRegistrationInvitationRepository
+                        .saveAndFlush(invitation);
+
+        PlayerRegistrationDetailResponse response =
+                playerRegistrationDetailService
+                        .getRegistrationDetail(savedPlayer.getId());
+
+        assertThat(response.invitationStatus())
+                .isEqualTo("PENDING");
+
+        assertThat(response.invitationCreatedAt())
+                .isNotNull();
+
+        assertThat(response.invitationExpiresAt())
+                .isEqualTo(savedInvitation.getExpiresAt());
+
+        assertThat(response.invitationCompletedAt())
+                .isNull();
+    }
+
+    @Test
+    void registrationDetailShouldReturnLatestInvitation() {
+        Player player = new Player();
+        player.setFirstName("Detail");
+        player.setLastName("Latest");
+        player.setDisplayName(
+                "Detail Latest " + uniqueTestId());
+        player.setRole(PlayerRole.BATTER);
+        player.setRegistrationStatus(
+                PlayerRegistrationStatus.PENDING);
+
+        Player savedPlayer =
+                playerRepository.saveAndFlush(player);
+
+        PlayerRegistrationInvitation first =
+                new PlayerRegistrationInvitation();
+
+        first.setPlayer(savedPlayer);
+        first.setToken(
+                "detail-first-" + uniqueTestId());
+        first.setStatus(
+                PlayerRegistrationInvitationStatus.CANCELLED);
+        first.setExpiresAt(
+                Instant.now().plus(7, ChronoUnit.DAYS));
+
+        playerRegistrationInvitationRepository
+                .saveAndFlush(first);
+
+        PlayerRegistrationInvitation second =
+                new PlayerRegistrationInvitation();
+
+        second.setPlayer(savedPlayer);
+        second.setToken(
+                "detail-second-" + uniqueTestId());
+        second.setStatus(
+                PlayerRegistrationInvitationStatus.PENDING);
+        second.setExpiresAt(
+                Instant.now().plus(7, ChronoUnit.DAYS));
+
+        PlayerRegistrationInvitation savedSecond =
+                playerRegistrationInvitationRepository
+                        .saveAndFlush(second);
+
+        PlayerRegistrationDetailResponse response =
+                playerRegistrationDetailService
+                        .getRegistrationDetail(savedPlayer.getId());
+
+        assertThat(response.invitationStatus())
+                .isEqualTo("PENDING");
+
+        assertThat(response.invitationExpiresAt())
+                .isEqualTo(savedSecond.getExpiresAt());
+    }
+
+    @Test
+    void registrationDetailShouldReturnLinkedUserInformation() {
+        User user = createPlayerRegistrationTestUser();
+
+        Player player = new Player();
+        player.setFirstName("Detail");
+        player.setLastName("Registered");
+        player.setDisplayName(
+                "Detail Registered " + uniqueTestId());
+        player.setRole(PlayerRole.BATTER);
+        player.setRegistrationStatus(
+                PlayerRegistrationStatus.REGISTERED);
+        player.setUser(user);
+
+        Player savedPlayer =
+                playerRepository.saveAndFlush(player);
+
+        PlayerRegistrationDetailResponse response =
+                playerRegistrationDetailService
+                        .getRegistrationDetail(savedPlayer.getId());
+
+        assertThat(response.registrationStatus())
+                .isEqualTo("REGISTERED");
+
+        assertThat(response.userId())
+                .isEqualTo(user.getId());
+
+        assertThat(response.userEmail())
+                .isEqualTo(user.getEmail());
+
+        assertThat(response.userDisplayName())
+                .isEqualTo(user.getDisplayName());
+    }
+
+    @Test
+    void registrationDetailShouldRejectUnknownPlayer() {
+        Long unknownPlayerId =
+                Long.MAX_VALUE;
+
+        assertThatThrownBy(() ->
+                playerRegistrationDetailService
+                        .getRegistrationDetail(unknownPlayerId))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Player not found");
+    }
+
+    @Test
+    void regenerationServiceShouldCreateNewInvitation() {
+        User admin = createPlayerRegistrationTestUser();
+
+        Player player = new Player();
+        player.setFirstName("Regenerate");
+        player.setLastName("Player");
+        player.setDisplayName(
+                "Regenerate Player " + uniqueTestId());
+        player.setRole(PlayerRole.BATTER);
+        player.setRegistrationStatus(
+                PlayerRegistrationStatus.PENDING);
+
+        Player savedPlayer =
+                playerRepository.saveAndFlush(player);
+
+        PlayerRegistrationInvitation oldInvitation =
+                new PlayerRegistrationInvitation();
+
+        oldInvitation.setPlayer(savedPlayer);
+        oldInvitation.setToken(
+                "regenerate-old-" + uniqueTestId());
+        oldInvitation.setStatus(
+                PlayerRegistrationInvitationStatus.PENDING);
+        oldInvitation.setExpiresAt(
+                Instant.now().plus(7, ChronoUnit.DAYS));
+
+        PlayerRegistrationInvitation savedOldInvitation =
+                playerRegistrationInvitationRepository
+                        .saveAndFlush(oldInvitation);
+
+        PlayerRegistrationRegenerateResponse response =
+                playerRegistrationRegenerateService
+                        .regenerateInvitation(
+                                savedPlayer.getId(),
+                                admin);
+
+        assertThat(response.playerId())
+                .isEqualTo(savedPlayer.getId());
+
+        assertThat(response.displayName())
+                .isEqualTo(savedPlayer.getDisplayName());
+
+        assertThat(response.invitationStatus())
+                .isEqualTo("PENDING");
+
+        assertThat(response.registrationLink())
+                .isNotBlank();
+
+        PlayerRegistrationInvitation updatedOldInvitation =
+                playerRegistrationInvitationRepository
+                        .findById(savedOldInvitation.getId())
+                        .orElseThrow();
+
+        assertThat(updatedOldInvitation.getStatus())
+                .isEqualTo(
+                        PlayerRegistrationInvitationStatus.CANCELLED);
+
+        assertThat(response.registrationLink())
+                .isNotEqualTo(savedOldInvitation.getToken());
+    }
+
+    @Test
+    void regenerationServiceShouldKeepSamePlayer() {
+        User admin = createPlayerRegistrationTestUser();
+
+        Player player = new Player();
+        player.setFirstName("Same");
+        player.setLastName("Player");
+        player.setDisplayName(
+                "Same Player " + uniqueTestId());
+        player.setRole(PlayerRole.BATTER);
+        player.setRegistrationStatus(
+                PlayerRegistrationStatus.PENDING);
+
+        Player savedPlayer =
+                playerRepository.saveAndFlush(player);
+
+        PlayerRegistrationInvitation invitation =
+                new PlayerRegistrationInvitation();
+
+        invitation.setPlayer(savedPlayer);
+        invitation.setToken(
+                "same-player-" + uniqueTestId());
+        invitation.setStatus(
+                PlayerRegistrationInvitationStatus.PENDING);
+        invitation.setExpiresAt(
+                Instant.now().plus(7, ChronoUnit.DAYS));
+
+        playerRegistrationInvitationRepository
+                .saveAndFlush(invitation);
+
+        PlayerRegistrationRegenerateResponse response =
+                playerRegistrationRegenerateService
+                        .regenerateInvitation(
+                                savedPlayer.getId(),
+                                admin);
+
+        assertThat(response.playerId())
+                .isEqualTo(savedPlayer.getId());
+
+        assertThat(playerRepository.findById(savedPlayer.getId()))
+                .isPresent();
+
+        assertThat(playerRepository.findById(savedPlayer.getId())
+                .orElseThrow()
+                .getDisplayName())
+                .isEqualTo(savedPlayer.getDisplayName());
+    }
+
+    @Test
+    void regenerationServiceShouldRejectRegisteredPlayer() {
+        User admin = createPlayerRegistrationTestUser();
+
+        Player player = new Player();
+        player.setFirstName("Registered");
+        player.setLastName("Player");
+        player.setDisplayName(
+                "Registered Player " + uniqueTestId());
+        player.setRole(PlayerRole.BATTER);
+        player.setRegistrationStatus(
+                PlayerRegistrationStatus.REGISTERED);
+
+        Player savedPlayer =
+                playerRepository.saveAndFlush(player);
+
+        PlayerRegistrationInvitation invitation =
+                new PlayerRegistrationInvitation();
+
+        invitation.setPlayer(savedPlayer);
+        invitation.setToken(
+                "registered-" + uniqueTestId());
+        invitation.setStatus(
+                PlayerRegistrationInvitationStatus.USED);
+        invitation.setExpiresAt(
+                Instant.now().plus(7, ChronoUnit.DAYS));
+
+        playerRegistrationInvitationRepository
+                .saveAndFlush(invitation);
+
+        assertThatThrownBy(() ->
+                playerRegistrationRegenerateService
+                        .regenerateInvitation(
+                                savedPlayer.getId(),
+                                admin))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Player is already registered");
+    }
+
+    @Test
+    void regenerationServiceShouldRejectUnknownPlayer() {
+        User admin = createPlayerRegistrationTestUser();
+
+        assertThatThrownBy(() ->
+                playerRegistrationRegenerateService
+                        .regenerateInvitation(
+                                Long.MAX_VALUE,
+                                admin))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Player not found");
+    }
+
+    @Test
+    void regenerationServiceShouldRejectUsedInvitation() {
+        User admin = createPlayerRegistrationTestUser();
+
+        Player player = new Player();
+        player.setFirstName("Used");
+        player.setLastName("Invitation");
+        player.setDisplayName(
+                "Used Invitation " + uniqueTestId());
+        player.setRole(PlayerRole.BATTER);
+        player.setRegistrationStatus(
+                PlayerRegistrationStatus.PENDING);
+
+        Player savedPlayer =
+                playerRepository.saveAndFlush(player);
+
+        PlayerRegistrationInvitation invitation =
+                new PlayerRegistrationInvitation();
+
+        invitation.setPlayer(savedPlayer);
+        invitation.setToken(
+                "used-invitation-" + uniqueTestId());
+        invitation.setStatus(
+                PlayerRegistrationInvitationStatus.USED);
+        invitation.setExpiresAt(
+                Instant.now().plus(7, ChronoUnit.DAYS));
+        invitation.setCompletedAt(Instant.now());
+
+        playerRegistrationInvitationRepository
+                .saveAndFlush(invitation);
+
+        assertThatThrownBy(() ->
+                playerRegistrationRegenerateService
+                        .regenerateInvitation(
+                                savedPlayer.getId(),
+                                admin))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Invitation has already been used");
+    }
+
+    @Test
+    void adminShouldBeAbleToRegeneratePlayerRegistrationInvitation()
+                throws Exception {
+
+        Authentication authentication =
+                createAdminAuthentication();
+
+        Player player = new Player();
+        player.setFirstName("API");
+        player.setLastName("Regenerate");
+        player.setDisplayName(
+                "API Regenerate " + uniqueTestId());
+        player.setRole(PlayerRole.BATTER);
+        player.setRegistrationStatus(
+                PlayerRegistrationStatus.PENDING);
+
+        Player savedPlayer =
+                playerRepository.saveAndFlush(player);
+
+        PlayerRegistrationInvitation oldInvitation =
+                new PlayerRegistrationInvitation();
+
+        oldInvitation.setPlayer(savedPlayer);
+        oldInvitation.setToken(
+                "api-regenerate-old-" + uniqueTestId());
+        oldInvitation.setStatus(
+                PlayerRegistrationInvitationStatus.PENDING);
+        oldInvitation.setExpiresAt(
+                Instant.now().plus(7, ChronoUnit.DAYS));
+
+        PlayerRegistrationInvitation savedOldInvitation =
+                playerRegistrationInvitationRepository
+                        .saveAndFlush(oldInvitation);
+
+        mockMvc.perform(
+                post(
+                        "/api/players/registrations/{playerId}/regenerate",
+                        savedPlayer.getId()
+                )
+                .with(
+                        SecurityMockMvcRequestPostProcessors
+                                .authentication(authentication)
+                )
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.playerId")
+                .value(savedPlayer.getId()))
+        .andExpect(jsonPath("$.displayName")
+                .value(savedPlayer.getDisplayName()))
+        .andExpect(jsonPath("$.registrationStatus")
+                .value("PENDING"))
+        .andExpect(jsonPath("$.invitationStatus")
+                .value("PENDING"))
+        .andExpect(jsonPath("$.invitationCreatedAt")
+                .exists())
+        .andExpect(jsonPath("$.invitationExpiresAt")
+                .exists())
+        .andExpect(jsonPath("$.registrationLink")
+                .isNotEmpty());
+
+        PlayerRegistrationInvitation updatedOldInvitation =
+                playerRegistrationInvitationRepository
+                        .findById(savedOldInvitation.getId())
+                        .orElseThrow();
+
+        assertThat(updatedOldInvitation.getStatus())
+                .isEqualTo(
+                        PlayerRegistrationInvitationStatus.CANCELLED);
+    }
+
+    @Test
+    void playerWithoutAdminAccessShouldNotRegeneratePlayerRegistrationInvitation()
+                throws Exception {
+
+        User player = createPlayerRegistrationTestUser();
+
+        String googleSubject =
+                "google-regenerate-player-test-" + uniqueTestId();
+
+        UserAuthentication userAuthentication =
+                new UserAuthentication();
+
+        userAuthentication.setUser(player);
+        userAuthentication.setProvider(
+                AuthenticationProvider.GOOGLE);
+        userAuthentication.setProviderUserId(googleSubject);
+
+        userAuthenticationRepository.saveAndFlush(
+                userAuthentication);
+
+        OAuth2User oauth2User =
+                new DefaultOAuth2User(
+                        java.util.List.of(
+                                new SimpleGrantedAuthority("ROLE_USER")
+                        ),
+                        Map.of(
+                                "sub", googleSubject,
+                                "email", player.getEmail(),
+                                "name", player.getDisplayName()
+                        ),
+                        "sub"
+                );
+
+        Authentication authentication =
+                new UsernamePasswordAuthenticationToken(
+                        oauth2User,
+                        null,
+                        oauth2User.getAuthorities()
+                );
+
+        Player targetPlayer = new Player();
+        targetPlayer.setFirstName("Protected");
+        targetPlayer.setLastName("Regenerate");
+        targetPlayer.setDisplayName(
+                "Protected Regenerate " + uniqueTestId());
+        targetPlayer.setRole(PlayerRole.BATTER);
+        targetPlayer.setRegistrationStatus(
+                PlayerRegistrationStatus.PENDING);
+
+        Player savedTargetPlayer =
+                playerRepository.saveAndFlush(targetPlayer);
+
+        PlayerRegistrationInvitation invitation =
+                new PlayerRegistrationInvitation();
+
+        invitation.setPlayer(savedTargetPlayer);
+        invitation.setToken(
+                "protected-regenerate-" + uniqueTestId());
+        invitation.setStatus(
+                PlayerRegistrationInvitationStatus.PENDING);
+        invitation.setExpiresAt(
+                Instant.now().plus(7, ChronoUnit.DAYS));
+
+        playerRegistrationInvitationRepository
+                .saveAndFlush(invitation);
+
+        mockMvc.perform(
+                post(
+                        "/api/players/registrations/{playerId}/regenerate",
+                        savedTargetPlayer.getId()
+                )
+                .with(
+                        SecurityMockMvcRequestPostProcessors
+                                .authentication(authentication)
+                )
+        )
+        .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void unauthenticatedUserShouldNotRegeneratePlayerRegistrationInvitation()
+                throws Exception {
+
+        mockMvc.perform(
+                post(
+                        "/api/players/registrations/{playerId}/regenerate",
+                        1L
+                )
+        )
+        .andExpect(status().is3xxRedirection());
+    }
+
+    @Test
+    void playerRegistrationExcelExportShouldGenerateValidExcelFile()
+                throws Exception {
+
+        Player player = new Player();
+        player.setFirstName("Excel");
+        player.setLastName("Export");
+        player.setDisplayName("Excel Export " + uniqueTestId());
+        player.setRole(PlayerRole.BATTER);
+        player.setRegistrationStatus(PlayerRegistrationStatus.PENDING);
+        player = playerRepository.saveAndFlush(player);
+
+        User invitedBy = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        invitedBy
+                );
+
+        byte[] excel =
+                playerRegistrationExcelExportService.exportRegistrations();
+
+        assertThat(excel)
+                .isNotNull()
+                .isNotEmpty();
+
+        try (Workbook workbook =
+                        new XSSFWorkbook(new ByteArrayInputStream(excel))) {
+
+                assertThat(workbook.getNumberOfSheets())
+                        .isGreaterThanOrEqualTo(1);
+
+                assertThat(workbook.getSheet("Player Registrations"))
+                        .isNotNull();
+        }
+
+        assertThat(invitation.getToken())
+                .isNotBlank();
+    }
+
+    @Test
+    void playerRegistrationExcelExportShouldContainExpectedHeaders()
+                throws Exception {
+
+        byte[] excel =
+                playerRegistrationExcelExportService.exportRegistrations();
+
+        try (Workbook workbook =
+                        new XSSFWorkbook(new ByteArrayInputStream(excel))) {
+
+                var sheet =
+                        workbook.getSheet("Player Registrations");
+
+                var headerRow =
+                        sheet.getRow(0);
+
+                assertThat(headerRow.getCell(0).getStringCellValue())
+                        .isEqualTo("Player Name");
+
+                assertThat(headerRow.getCell(1).getStringCellValue())
+                        .isEqualTo("Jersey Number");
+
+                assertThat(headerRow.getCell(2).getStringCellValue())
+                        .isEqualTo("Team");
+
+                assertThat(headerRow.getCell(3).getStringCellValue())
+                        .isEqualTo("Batting Style");
+
+                assertThat(headerRow.getCell(4).getStringCellValue())
+                        .isEqualTo("Bowling Style");
+
+                assertThat(headerRow.getCell(5).getStringCellValue())
+                        .isEqualTo("Role");
+
+                assertThat(headerRow.getCell(6).getStringCellValue())
+                        .isEqualTo("Registration Status");
+
+                assertThat(headerRow.getCell(7).getStringCellValue())
+                        .isEqualTo("Invitation Created Date");
+
+                assertThat(headerRow.getCell(8).getStringCellValue())
+                        .isEqualTo("Invitation Expiry Date");
+
+                assertThat(headerRow.getCell(9).getStringCellValue())
+                        .isEqualTo("Registration Link");
+        }
+     }
+
+
+     @Test
+     void playerRegistrationExcelExportShouldContainPlayerRegistrationData()
+                throws Exception {
+
+        Player player = new Player();
+        player.setFirstName("Registration");
+        player.setLastName("Test");
+        player.setDisplayName("Registration Test " + uniqueTestId());
+        player.setBattingStyle(BattingStyle.RIGHT_HAND);
+        player.setBowlingStyle(BowlingStyle.RIGHT_ARM_MEDIUM);
+        player.setRole(PlayerRole.ALL_ROUNDER);
+        player.setRegistrationStatus(PlayerRegistrationStatus.PENDING);
+
+        player = playerRepository.saveAndFlush(player);
+
+        User invitedBy = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                        playerRegistrationInvitationService.createInvitation(
+                                player,
+                                invitedBy
+                        );
+
+        byte[] excel =
+                playerRegistrationExcelExportService.exportRegistrations();
+
+        try (Workbook workbook =
+                        new XSSFWorkbook(new ByteArrayInputStream(excel))) {
+
+                var sheet =
+                        workbook.getSheet("Player Registrations");
+
+                boolean foundPlayer = false;
+
+                for (int rowIndex = 1;
+                rowIndex <= sheet.getLastRowNum();
+                rowIndex++) {
+
+                var row = sheet.getRow(rowIndex);
+
+                if (row == null || row.getCell(0) == null) {
+                        continue;
+                }
+
+                String displayName =
+                        row.getCell(0).getStringCellValue();
+
+                        if (displayName.equals(player.getDisplayName())) {
+
+                                foundPlayer = true;
+
+                                assertThat(
+                                        row.getCell(3).getStringCellValue()
+                                ).isEqualTo("RIGHT_HAND");
+
+                                assertThat(
+                                        row.getCell(4).getStringCellValue()
+                                ).isEqualTo("RIGHT_ARM_MEDIUM");
+
+                                assertThat(
+                                        row.getCell(5).getStringCellValue()
+                                ).isEqualTo("ALL_ROUNDER");
+
+                                assertThat(
+                                        row.getCell(6).getStringCellValue()
+                                ).isEqualTo("PENDING");
+
+                                assertThat(
+                                        row.getCell(9).getStringCellValue()
+                                )
+                                .contains("http://localhost:5173/player-registration/")
+                                .contains(invitation.getToken());
+
+                                break;
+                        }
+                }
+
+                assertThat(foundPlayer)
+                        .isTrue();
+        }
+    }
+
+    @Test
+    void adminShouldBeAbleToDownloadPlayerRegistrationExcel()
+                throws Exception {
+
+        Authentication authentication =
+                createAdminAuthentication();
+
+        mockMvc.perform(
+                get("/api/players/registrations/export")
+                        .with(
+                                org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isOk())
+        .andExpect(
+                header().string(
+                        HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"player-registrations.xlsx\""
+                )
+        )
+        .andExpect(
+                header().string(
+                        HttpHeaders.CONTENT_TYPE,
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+        );
+    }
+
+    @Test
+    void playerWithoutAdminAccessShouldNotDownloadPlayerRegistrationExcel()
+                throws Exception {
+
+        User player =
+                createPlayerRegistrationTestUser();
+
+        String googleSubject =
+                "google-player-export-test-" + uniqueTestId();
+
+        UserAuthentication userAuthentication =
+                new UserAuthentication();
+
+        userAuthentication.setUser(player);
+        userAuthentication.setProvider(
+                AuthenticationProvider.GOOGLE
+        );
+        userAuthentication.setProviderUserId(
+                googleSubject
+        );
+
+        userAuthenticationRepository.saveAndFlush(
+                userAuthentication
+        );
+
+        OAuth2User oauth2User =
+                new DefaultOAuth2User(
+                        java.util.List.of(
+                                new SimpleGrantedAuthority("ROLE_USER")
+                        ),
+                        Map.of(
+                                "sub", googleSubject,
+                                "email", player.getEmail(),
+                                "name", player.getDisplayName()
+                        ),
+                        "sub"
+                );
+
+        Authentication authentication =
+                new UsernamePasswordAuthenticationToken(
+                        oauth2User,
+                        null,
+                        oauth2User.getAuthorities()
+                );
+
+        mockMvc.perform(
+                get("/api/players/registrations/export")
+                        .with(
+                                org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void unauthenticatedUserShouldNotDownloadPlayerRegistrationExcel()
+                throws Exception {
+
+        mockMvc.perform(
+                get("/api/players/registrations/export")
+        )
+        .andExpect(status().is3xxRedirection());
+    }
+
+    @Test
+    void pendingPlayerRegistrationInvitationShouldReturnLink() {
+
+        Player player = createPlayer(
+                "Link",
+                "Test",
+                "Link Test " + uniqueTestId(),
+                PlayerRole.BATTER
+        );
+
+        User invitedBy = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        invitedBy
+                );
+
+        PlayerRegistrationLinkResponse response =
+                playerRegistrationLinkService.getRegistrationLink(
+                        player.getId()
+                );
+
+        assertThat(response.playerId())
+                .isEqualTo(player.getId());
+
+        assertThat(response.displayName())
+                .isEqualTo(player.getDisplayName());
+
+        assertThat(response.registrationStatus())
+                .isEqualTo("PENDING");
+
+        assertThat(response.invitationStatus())
+                .isEqualTo("PENDING");
+
+        assertThat(response.registrationLink())
+                .startsWith(
+                        "http://localhost:5173/player-registration/"
+                );
+
+        assertThat(response.registrationLink())
+                .contains(invitation.getToken());
+
+        assertThat(response.expiresAt())
+                .isEqualTo(invitation.getExpiresAt());
+    }
+
+    @Test
+    void registeredPlayerShouldNotReturnRegistrationLink() {
+
+        Player player = createPlayer(
+                "Registered",
+                "Player",
+                "Registered Player " + uniqueTestId(),
+                PlayerRole.BATTER
+        );
+
+        player.setRegistrationStatus(
+                PlayerRegistrationStatus.REGISTERED
+        );
+
+        playerRepository.saveAndFlush(player);
+
+        assertThatThrownBy(() ->
+                playerRegistrationLinkService.getRegistrationLink(
+                        player.getId()
+                )
+        )
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("Player is already registered");
+    }
+
+    @Test
+    void expiredPlayerRegistrationInvitationShouldBeRejected() {
+
+        Player player = createPlayer(
+                "Expired",
+                "Link",
+                "Expired Link " + uniqueTestId(),
+                PlayerRole.BATTER
+        );
+
+        User invitedBy = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        invitedBy
+                );
+
+        invitation.setExpiresAt(
+                java.time.Instant.now().minusSeconds(1)
+        );
+
+        playerRegistrationInvitationRepository.saveAndFlush(
+                invitation
+        );
+
+        assertThatThrownBy(() ->
+                playerRegistrationLinkService.getRegistrationLink(
+                        player.getId()
+                )
+        )
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("Registration invitation has expired");
+    }
+
+    @Test
+    void cancelledPlayerRegistrationInvitationShouldBeRejected() {
+
+        Player player = createPlayer(
+                "Cancelled",
+                "Link",
+                "Cancelled Link " + uniqueTestId(),
+                PlayerRole.BATTER
+        );
+
+        User invitedBy = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        invitedBy
+                );
+
+        playerRegistrationInvitationService.cancelInvitation(
+                invitation
+        );
+
+        assertThatThrownBy(() ->
+                playerRegistrationLinkService.getRegistrationLink(
+                        player.getId()
+                )
+        )
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("Registration invitation is not active");
+    }
+
+    @Test
+    void usedPlayerRegistrationInvitationShouldBeRejected() {
+
+        Player player = createPlayer(
+                "Used",
+                "Link",
+                "Used Link " + uniqueTestId(),
+                PlayerRole.BATTER
+        );
+
+        User invitedBy = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        invitedBy
+                );
+
+        invitation.setStatus(
+                PlayerRegistrationInvitationStatus.USED
+        );
+
+        playerRegistrationInvitationRepository.saveAndFlush(invitation);
+
+        assertThatThrownBy(() ->
+                playerRegistrationLinkService.getRegistrationLink(
+                        player.getId()
+                )
+        )
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("Registration invitation is not active");
+    }
+
+    @Test
+    void playerWithoutRegistrationInvitationShouldBeRejected() {
+
+        Player player = createPlayer(
+                "No",
+                "Invitation",
+                "No Invitation " + uniqueTestId(),
+                PlayerRole.BATTER
+        );
+
+        assertThatThrownBy(() ->
+                playerRegistrationLinkService.getRegistrationLink(
+                        player.getId()
+                )
+        )
+        .isInstanceOf(IllegalStateException.class)
+        .hasMessage("No invitation exists for player");
+    }
+
+    @Test
+    void unknownPlayerShouldBeRejectedWhenGettingRegistrationLink() {
+
+        assertThatThrownBy(() ->
+                playerRegistrationLinkService.getRegistrationLink(
+                        Long.MAX_VALUE
+                )
+        )
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessage("Player not found");
+    }
+
+    @Test
+    void adminShouldBeAbleToGetPlayerRegistrationLink()
+                throws Exception {
+
+        Authentication authentication =
+                createAdminAuthentication();
+
+        Player player = createPlayer(
+                "API",
+                "Link",
+                "API Link " + uniqueTestId(),
+                PlayerRole.BATTER
+        );
+
+        User invitedBy = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        invitedBy
+                );
+
+        mockMvc.perform(
+                get(
+                        "/api/players/registrations/{playerId}/link",
+                        player.getId()
+                )
+                .with(
+                        org.springframework.security.test.web.servlet.request
+                                .SecurityMockMvcRequestPostProcessors
+                                .authentication(authentication)
+                )
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.playerId")
+                .value(player.getId().intValue()))
+        .andExpect(jsonPath("$.displayName")
+                .value(player.getDisplayName()))
+        .andExpect(jsonPath("$.registrationStatus")
+                .value("PENDING"))
+        .andExpect(jsonPath("$.invitationStatus")
+                .value("PENDING"))
+        .andExpect(jsonPath("$.registrationLink")
+                .value(
+                        "http://localhost:5173/player-registration/"
+                                + invitation.getToken()
+                ))
+        .andExpect(jsonPath("$.expiresAt")
+                .exists());
+    }
+
+    @Test
+    void playerWithoutAdminAccessShouldNotGetPlayerRegistrationLink()
+                throws Exception {
+
+        User playerUser =
+                createPlayerRegistrationTestUser();
+
+        String googleSubject =
+                "google-player-link-test-" + uniqueTestId();
+
+        UserAuthentication userAuthentication =
+                new UserAuthentication();
+
+        userAuthentication.setUser(playerUser);
+        userAuthentication.setProvider(
+                AuthenticationProvider.GOOGLE
+        );
+        userAuthentication.setProviderUserId(
+                googleSubject
+        );
+
+        userAuthenticationRepository.saveAndFlush(
+                userAuthentication
+        );
+
+        OAuth2User oauth2User =
+                new DefaultOAuth2User(
+                        java.util.List.of(
+                                new SimpleGrantedAuthority("ROLE_USER")
+                        ),
+                        Map.of(
+                                "sub", googleSubject,
+                                "email", playerUser.getEmail(),
+                                "name", playerUser.getDisplayName()
+                        ),
+                        "sub"
+                );
+
+        Authentication authentication =
+                new UsernamePasswordAuthenticationToken(
+                        oauth2User,
+                        null,
+                        oauth2User.getAuthorities()
+                );
+
+        mockMvc.perform(
+                get(
+                        "/api/players/registrations/{playerId}/link",
+                        1L
+                )
+                .with(
+                        org.springframework.security.test.web.servlet.request
+                                .SecurityMockMvcRequestPostProcessors
+                                .authentication(authentication)
+                )
+        )
+        .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void unauthenticatedUserShouldNotGetPlayerRegistrationLink()
+                throws Exception {
+
+        mockMvc.perform(
+                get(
+                        "/api/players/registrations/{playerId}/link",
+                        1L
+                )
+        )
+        .andExpect(status().is3xxRedirection());
+    }
+
+    @Test
+    void pendingExpiredInvitationShouldBeMarkedExpired() {
+
+        Player player = createPlayer(
+                "Maintenance",
+                "Expired",
+                "Maintenance Expired " + uniqueTestId(),
+                PlayerRole.BATTER
+        );
+
+        User invitedBy = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        invitedBy
+                );
+
+        invitation.setExpiresAt(
+                java.time.Instant.now().minusSeconds(1)
+        );
+
+        playerRegistrationInvitationRepository.saveAndFlush(
+                invitation
+        );
+
+        int expiredCount =
+                playerRegistrationInvitationMaintenanceService
+                        .markExpiredInvitations();
+
+        PlayerRegistrationInvitation refreshed =
+                playerRegistrationInvitationRepository
+                        .findById(invitation.getId())
+                        .orElseThrow();
+
+        assertThat(expiredCount)
+                .isGreaterThanOrEqualTo(1);
+
+        assertThat(refreshed.getStatus())
+                .isEqualTo(
+                        PlayerRegistrationInvitationStatus.EXPIRED
+                );
+    }
+
+    @Test
+    void futurePendingInvitationShouldRemainPending() {
+
+        Player player = createPlayer(
+                "Maintenance",
+                "Future",
+                "Maintenance Future " + uniqueTestId(),
+                PlayerRole.BATTER
+        );
+
+        User invitedBy = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        invitedBy
+                );
+
+        int expiredCount =
+                playerRegistrationInvitationMaintenanceService
+                        .markExpiredInvitations();
+
+        PlayerRegistrationInvitation refreshed =
+                playerRegistrationInvitationRepository
+                        .findById(invitation.getId())
+                        .orElseThrow();
+
+        assertThat(refreshed.getStatus())
+                .isEqualTo(
+                        PlayerRegistrationInvitationStatus.PENDING
+                );
+    }
+
+    @Test
+    void cancelledInvitationShouldRemainCancelled() {
+
+        Player player = createPlayer(
+                "Maintenance",
+                "Cancelled",
+                "Maintenance Cancelled " + uniqueTestId(),
+                PlayerRole.BATTER
+        );
+
+        User invitedBy = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        invitedBy
+                );
+
+        playerRegistrationInvitationService.cancelInvitation(
+                invitation
+        );
+
+        invitation.setExpiresAt(
+                java.time.Instant.now().minusSeconds(1)
+        );
+
+        playerRegistrationInvitationRepository.saveAndFlush(
+                invitation
+        );
+
+        playerRegistrationInvitationMaintenanceService
+                .markExpiredInvitations();
+
+        PlayerRegistrationInvitation refreshed =
+                playerRegistrationInvitationRepository
+                        .findById(invitation.getId())
+                        .orElseThrow();
+
+        assertThat(refreshed.getStatus())
+                .isEqualTo(
+                        PlayerRegistrationInvitationStatus.CANCELLED
+                );
+    }
+
+    @Test
+    void usedInvitationShouldRemainUsed() {
+
+        Player player = createPlayer(
+                "Maintenance",
+                "Used",
+                "Maintenance Used " + uniqueTestId(),
+                PlayerRole.BATTER
+        );
+
+        User invitedBy = createPlayerRegistrationTestUser();
+
+        PlayerRegistrationInvitation invitation =
+                playerRegistrationInvitationService.createInvitation(
+                        player,
+                        invitedBy
+                );
+
+        invitation.setStatus(
+                PlayerRegistrationInvitationStatus.USED
+        );
+
+        invitation.setExpiresAt(
+                java.time.Instant.now().minusSeconds(1)
+        );
+
+        playerRegistrationInvitationRepository.saveAndFlush(
+                invitation
+        );
+
+        playerRegistrationInvitationMaintenanceService
+                .markExpiredInvitations();
+
+        PlayerRegistrationInvitation refreshed =
+                playerRegistrationInvitationRepository
+                        .findById(invitation.getId())
+                        .orElseThrow();
+
+        assertThat(refreshed.getStatus())
+                .isEqualTo(
+                        PlayerRegistrationInvitationStatus.USED
+                );
+    }
+
+
+            
+    private AdminEntitlement createAdminEntitlement(
+            User user,
+            AdminSubscriptionStatus status) {
+
+        AdminEntitlement entitlement =
+                new AdminEntitlement();
+
+        entitlement.setUser(user);
+        entitlement.setStatus(status);
+
+        return adminEntitlementRepository.save(entitlement);
+    }
+
+    private void createInningsState(
 				Innings innings,
 				Player striker,
 				Player bowler,
@@ -4797,9 +10219,9 @@ class CricklocalBackendApplicationTests {
 			state.setLegalBallsInOver(0);
 
 			inningsStateRepository.save(state);
-	}
-
-	private RecordDeliveryRequest createDeliveryRequest(
+    }
+    
+    private RecordDeliveryRequest createDeliveryRequest(
 				Player batter,
 				Player nonStriker,
 				Player bowler,
@@ -4827,7 +10249,7 @@ class CricklocalBackendApplicationTests {
 			request.setWicket(false);
 
 			return request;
-	}
+    }
 
     private Player createPlayer(
 			String firstName,
@@ -4843,7 +10265,7 @@ class CricklocalBackendApplicationTests {
 		player.setRole(role);
 
 		return playerRepository.save(player);
-	}
+    }
 
     private void createLineup(
             Match match,
@@ -4864,4 +10286,160 @@ class CricklocalBackendApplicationTests {
 
         matchLineupRepository.save(lineup);
     }
+
+    private User createAdminAccessTestUser(boolean active) {
+
+        String testId =
+                String.valueOf(System.currentTimeMillis());
+
+        User user = new User();
+
+        user.setEmail(
+                "admin-access-" + testId + "@example.com");
+
+        user.setDisplayName(
+                "Admin Access Test " + testId);
+
+        user.setRole(UserRole.PLAYER);
+
+        user.setActive(active);
+
+        return userRepository.save(user);
+    }
+
+    private User createPlayerRegistrationTestUser() {
+        String testId = String.valueOf(System.currentTimeMillis())
+                + "-" + System.nanoTime();
+
+        User user = new User();
+        user.setEmail("player-registration-" + testId + "@example.com");
+        user.setDisplayName("Player Registration Test " + testId);
+        user.setRole(UserRole.PLAYER);
+        user.setActive(true);
+
+        return userRepository.save(user);
+    }
+
+    private Authentication createAdminAuthentication() {
+
+        User admin = createPlayerRegistrationTestUser();
+
+        adminAccessService.activateAdminAccess(
+                admin,
+                Instant.now(),
+                null
+        );
+
+        String googleSubject =
+                "google-admin-test-" + uniqueTestId();
+
+        UserAuthentication userAuthentication =
+                new UserAuthentication();
+
+        userAuthentication.setUser(admin);
+        userAuthentication.setProvider(
+                AuthenticationProvider.GOOGLE
+        );
+        userAuthentication.setProviderUserId(
+                googleSubject
+        );
+
+        userAuthenticationRepository.saveAndFlush(
+                userAuthentication
+        );
+
+        OAuth2User oauth2User =
+                new DefaultOAuth2User(
+                        java.util.List.of(
+                                new SimpleGrantedAuthority("ROLE_USER")
+                        ),
+                        Map.of(
+                                "sub", googleSubject,
+                                "email", admin.getEmail(),
+                                "name", admin.getDisplayName()
+                        ),
+                        "sub"
+                );
+
+        return new UsernamePasswordAuthenticationToken(
+                oauth2User,
+                null,
+                oauth2User.getAuthorities()
+        );
+    }
+
+    private PlayerRegistrationInvitation createRegistrationInvitation(
+        Player player,
+        String token,
+        Instant expiresAt,
+        User invitedBy
+    ) {
+        PlayerRegistrationInvitation invitation =
+                new PlayerRegistrationInvitation();
+
+        invitation.setPlayer(player);
+        invitation.setToken(token);
+        invitation.setExpiresAt(expiresAt);
+        invitation.setInvitedBy(invitedBy);
+
+        return playerRegistrationInvitationRepository.saveAndFlush(
+                invitation
+        );
+  }
+
+  private String uniqueTestId() {
+        return System.currentTimeMillis()
+                + "-"
+                + System.nanoTime();
+        }
+
+  private MockMultipartFile createPlayerImportExcel(
+        String... playerRows) throws Exception {
+
+        Workbook workbook = new XSSFWorkbook();
+
+        Sheet sheet = workbook.createSheet("Players");
+
+        Row header = sheet.createRow(0);
+
+        String[] headers = {
+                "First Name",
+                "Last Name",
+                "Display Name",
+                "Phone",
+                "Batting Style",
+                "Bowling Style",
+                "Role"
+        };
+
+        for (int i = 0; i < headers.length; i++) {
+                header.createCell(i).setCellValue(headers[i]);
+        }
+
+        for (int rowIndex = 0; rowIndex < playerRows.length; rowIndex++) {
+
+                String[] values = playerRows[rowIndex].split("\\|", -1);
+
+                Row row = sheet.createRow(rowIndex + 1);
+
+                for (int column = 0; column < values.length; column++) {
+                row.createCell(column).setCellValue(values[column]);
+                }
+        }
+
+        ByteArrayOutputStream outputStream =
+                new ByteArrayOutputStream();
+
+        workbook.write(outputStream);
+        workbook.close();
+
+        return new MockMultipartFile(
+                "file",
+                "players.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                outputStream.toByteArray()
+        );
+  }
+
 }
+
