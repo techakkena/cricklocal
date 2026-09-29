@@ -4,6 +4,7 @@ package com.cricklocal.service;
 import com.cricklocal.dto.CreatePlayerRequest;
 import com.cricklocal.dto.PlayerResponse;
 import com.cricklocal.dto.PlayerTeamResponse;
+import com.cricklocal.enums.PlayerScope;
 import com.cricklocal.entity.Player;
 import com.cricklocal.entity.TeamPlayer;
 import com.cricklocal.exception.ResourceNotFoundException;
@@ -49,6 +50,15 @@ public class PlayerService {
     public List<PlayerResponse> getAllPlayers() {
 
         return playerRepository.findAll()
+                .stream()
+                .map(this::toPlayerResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<PlayerResponse> getGlobalPlayers() {
+
+        return playerRepository.findByScope(PlayerScope.GLOBAL)
                 .stream()
                 .map(this::toPlayerResponse)
                 .toList();
