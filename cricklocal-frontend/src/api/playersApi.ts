@@ -31,6 +31,10 @@ export function getPlayers(): Promise<PlayerResponse[]> {
   return apiGet<PlayerResponse[]>("/api/players");
 }
 
+export function getGlobalPlayers(): Promise<PlayerResponse[]> {
+  return apiGet<PlayerResponse[]>("/api/players/global");
+}
+
 export function getPlayer(playerId: number): Promise<PlayerResponse> {
   return apiGet<PlayerResponse>(`/api/players/${playerId}`);
 }

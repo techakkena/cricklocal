@@ -37,6 +37,7 @@ const navItems: NavItem[] = [
     subItems: [
       { name: "Teams", path: "/teams" },
       { name: "Players", path: "/players" },
+      { name: "Global Player Directory", path: "/global-players" },
       { name: "Player Registrations", path: "/player-registrations" },
       { name: "Series", path: "/series" },
       { name: "Matches", path: "/matches" },

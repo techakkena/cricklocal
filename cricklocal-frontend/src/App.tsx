@@ -4,6 +4,7 @@ import { ScrollToTop } from "./components/common/ScrollToTop";
 import SignIn from "./pages/AuthPages/SignIn";
 import SignUp from "./pages/AuthPages/SignUp";
 import NotFound from "./pages/OtherPage/NotFound";
+import GlobalPlayers from "./pages/GlobalPlayers";
 import Home from "./pages/Dashboard/Home";
 import Teams from "./pages/Teams";
 import Players from "./pages/Players";
@@ -34,6 +35,7 @@ export default function App() {
           {/* Manage */}
           <Route path="/teams" element={<Teams />} />
           <Route path="/players" element={<Players />} />
+          <Route path="/global-players" element={<GlobalPlayers />} />
           <Route path="/player-registrations" 
           element={
             <AdminRoute>

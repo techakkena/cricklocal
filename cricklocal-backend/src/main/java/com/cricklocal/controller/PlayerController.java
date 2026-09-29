@@ -93,6 +93,11 @@ public class PlayerController {
         return playerService.getAllPlayers();
     }
 
+    @GetMapping("/global")
+    public List<PlayerResponse> getGlobalPlayers() {
+        return playerService.getGlobalPlayers();
+    }
+
     @GetMapping("/{playerId}")
     public PlayerResponse getPlayerById(
             @PathVariable Long playerId) {
