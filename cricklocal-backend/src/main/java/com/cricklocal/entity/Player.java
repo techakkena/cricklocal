@@ -4,6 +4,7 @@ import com.cricklocal.enums.BattingStyle;
 import com.cricklocal.enums.BowlingStyle;
 import com.cricklocal.enums.PlayerRole;
 import com.cricklocal.enums.PlayerRegistrationStatus;
+import com.cricklocal.enums.PlayerScope;
 import jakarta.persistence.*;
 import java.time.Instant;
 
@@ -43,6 +44,10 @@ public class Player {
     @Column(nullable = false, length = 20)
     private PlayerRegistrationStatus registrationStatus =
             PlayerRegistrationStatus.PENDING;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 10)
+    private PlayerScope scope = PlayerScope.GLOBAL;
 
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", unique = true)
@@ -126,6 +131,14 @@ public class Player {
     public void setRegistrationStatus(
             PlayerRegistrationStatus registrationStatus) {
         this.registrationStatus = registrationStatus;
+    }
+
+    public PlayerScope getScope() {
+    return scope;
+    }
+
+    public void setScope(PlayerScope scope) {
+        this.scope = scope;
     }
 
     public User getUser() {

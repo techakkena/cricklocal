@@ -76,6 +76,7 @@ public class PlayerService {
         response.setBattingStyle(player.getBattingStyle());
         response.setBowlingStyle(player.getBowlingStyle());
         response.setRole(player.getRole());
+        response.setScope(player.getScope());
         response.setActive(player.getActive());
         response.setCreatedAt(player.getCreatedAt());
 

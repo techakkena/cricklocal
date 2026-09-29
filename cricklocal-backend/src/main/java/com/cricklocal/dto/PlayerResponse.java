@@ -3,6 +3,7 @@ package com.cricklocal.dto;
 import com.cricklocal.enums.BattingStyle;
 import com.cricklocal.enums.BowlingStyle;
 import com.cricklocal.enums.PlayerRole;
+import com.cricklocal.enums.PlayerScope;
 
 import java.time.Instant;
 import java.util.List;
@@ -17,6 +18,7 @@ public class PlayerResponse {
     private BattingStyle battingStyle;
     private BowlingStyle bowlingStyle;
     private PlayerRole role;
+    private PlayerScope scope;
     private Boolean active;
     private Instant createdAt;
     private List<PlayerTeamResponse> teams;
@@ -83,6 +85,14 @@ public class PlayerResponse {
 
     public void setRole(PlayerRole role) {
         this.role = role;
+    }
+
+    public PlayerScope getScope() {
+    return scope;
+    }
+
+    public void setScope(PlayerScope scope) {
+        this.scope = scope;
     }
 
     public Boolean getActive() {
