@@ -1335,17 +1335,25 @@ public class DeliveryService {
         }
         }
 
-        // Odd number of runs means the batters change ends.
-        int runs = delivery.getRunsOffBat();
+        // Odd number of completed runs means the batters change ends.
+        // For Bye and Leg Bye, runsOffBat is 0, so include extraRuns.
+        // Wide/No Ball extra runs are intentionally excluded here because
+        // they do not represent completed runs by the batters in the same way.
+        int runsForStrikeRotation = delivery.getRunsOffBat();
 
-        if (runs % 2 != 0) {
+        if (delivery.getExtraType() == ExtraType.BYE
+                || delivery.getExtraType() == ExtraType.LEG_BYE) {
+        runsForStrikeRotation += delivery.getExtraRuns();
+        }
 
-                Player striker = state.getStriker();
+        if (runsForStrikeRotation % 2 != 0) {
 
-                state.setStriker(
-                        state.getNonStriker());
+        Player striker = state.getStriker();
 
-                state.setNonStriker(striker);
+        state.setStriker(
+                state.getNonStriker());
+
+        state.setNonStriker(striker);
         }
 
         // Only legal deliveries count toward the six-ball over.

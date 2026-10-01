@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "./apiClient";
+import { apiDelete, apiGet, apiPost } from "./apiClient";
 import type {
   AddPlayerToMatchRequest,
   InningsResponse,
@@ -7,6 +7,10 @@ import type {
   PlayingXIResponse,
   ScorecardResponse,
   StartInningsRequest,
+  InningsStateResponse,
+  SetInningsStateRequest,
+  RecordDeliveryRequest,
+  DeliveryResponse,
 } from "./types";
 
 export interface CreateMatchRequest {
@@ -20,6 +24,44 @@ export interface CreateMatchRequest {
   seriesId?: number;
   matchNumber?: number;
   teamBId: number;
+}
+
+export interface GenerateScoreOperatorAccessResponse {
+  matchId: number;
+  accessToken: string;
+  securityCode: string;
+  expiresAt: string;
+}
+
+export interface ValidateScoreOperatorAccessRequest {
+  accessToken: string;
+  securityCode: string;
+}
+
+export interface ValidateScoreOperatorAccessResponse {
+  matchId: number;
+  sessionToken: string;
+  expiresAt: string;
+}
+
+export interface GenerateScoreDisplayAccessResponse {
+  matchId: number;
+  displayToken: string;
+  expiresAt: string;
+}
+
+export interface ValidateScoreDisplayAccessResponse {
+  matchId: number;
+  expiresAt: string;
+}
+
+export function validateScoreOperatorAccess(
+  request: ValidateScoreOperatorAccessRequest,
+): Promise<ValidateScoreOperatorAccessResponse> {
+  return apiPost<ValidateScoreOperatorAccessResponse>(
+    "/api/matches/score-operator/access/validate",
+    request,
+  );
 }
 
 export function getMatches(): Promise<MatchResponse[]> {
@@ -36,6 +78,48 @@ export function createMatch(
   return apiPost<MatchResponse>("/api/matches", request);
 }
 
+export function generateScoreOperatorAccess(
+  matchId: number,
+): Promise<GenerateScoreOperatorAccessResponse> {
+  return apiPost<GenerateScoreOperatorAccessResponse>(
+    `/api/matches/${matchId}/score-operator/access`,
+    {},
+  );
+}
+
+export function generateScoreDisplayAccess(
+  matchId: number,
+): Promise<GenerateScoreDisplayAccessResponse> {
+  return apiPost<GenerateScoreDisplayAccessResponse>(
+    `/api/matches/${matchId}/score-display/access`,
+    {},
+  );
+}
+
+export function validateScoreDisplayAccess(
+  displayToken: string,
+): Promise<ValidateScoreDisplayAccessResponse> {
+  return apiGet<ValidateScoreDisplayAccessResponse>(
+    `/api/matches/score-display/access/${displayToken}`,
+  );
+}
+
+export function revokeScoreDisplayAccess(
+  matchId: number,
+): Promise<void> {
+  return apiDelete<void>(
+    `/api/matches/${matchId}/score-display/access`,
+  );
+}
+
+export function revokeScoreOperatorAccess(
+  matchId: number,
+): Promise<void> {
+  return apiDelete<void>(
+    `/api/matches/${matchId}/score-operator/access`,
+  );
+}
+
 export function startMatchInnings(
     matchId: number,
     request: StartInningsRequest,
@@ -44,6 +128,51 @@ export function startMatchInnings(
       `/api/matches/${matchId}/innings`,
       request,
     );
+}
+
+export function setInningsState(
+  inningsId: number,
+  request: SetInningsStateRequest,
+): Promise<InningsStateResponse> {
+  return apiPost<InningsStateResponse>(
+    `/api/innings/${inningsId}/state`,
+    request,
+  );
+}
+
+export function getInningsState(
+  inningsId: number,
+): Promise<InningsStateResponse> {
+  return apiGet<InningsStateResponse>(
+    `/api/innings/${inningsId}/state`,
+  );
+}
+
+export function recordDelivery(
+  inningsId: number,
+  request: RecordDeliveryRequest,
+): Promise<DeliveryResponse> {
+  return apiPost<DeliveryResponse>(
+    `/api/innings/${inningsId}/deliveries`,
+    request,
+  );
+}
+
+export function getInningsDeliveries(
+  inningsId: number,
+): Promise<DeliveryResponse[]> {
+  return apiGet<DeliveryResponse[]>(
+    `/api/innings/${inningsId}/deliveries`,
+  );
+}
+
+export function undoLastDelivery(
+  inningsId: number,
+): Promise<void> {
+  return apiPost<void>(
+    `/api/innings/${inningsId}/deliveries/undo`,
+    {},
+  );
 }
 
 export function getMatchInnings(matchId: number): Promise<InningsResponse[]> {

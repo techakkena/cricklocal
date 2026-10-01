@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   getPlayerRegistrationDetail,
   getPlayerRegistrationManagement,
+  regeneratePlayerRegistration,
   type PlayerRegistrationDetailResponse,
   type PlayerRegistrationManagementResponse,
 } from "../../api/playerRegistrationApi";
@@ -42,6 +43,7 @@ export default function PlayerRegistrationTable() {
   const [detailError, setDetailError] = useState<string | null>(null);
 
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [regeneratingPlayerId, setRegeneratingPlayerId] = useState<number | null>(null);
 
   useEffect(() => {
     async function loadRegistrations() {
@@ -95,6 +97,31 @@ export default function PlayerRegistrationTable() {
     setIsDetailModalOpen(false);
     setSelectedPlayer(null);
     setDetailError(null);
+  }
+
+  async function handleRegenerateInvitation(playerId: number) {
+    try {
+      setRegeneratingPlayerId(playerId);
+
+      await regeneratePlayerRegistration(playerId);
+
+      const data = await getPlayerRegistrationManagement();
+
+      setRegistrations(data);
+    } catch (err) {
+      console.error(
+        "Failed to regenerate player registration invitation:",
+        err,
+      );
+
+      window.alert(
+        err instanceof Error
+          ? err.message
+          : "Unable to regenerate registration invitation.",
+      );
+    } finally {
+      setRegeneratingPlayerId(null);
+    }
   }
 
   return (
@@ -204,6 +231,7 @@ export default function PlayerRegistrationTable() {
                     </td>
 
                     <td className="whitespace-nowrap px-6 py-4 text-right">
+                    <div className="flex items-center justify-end gap-3">
                       <button
                         type="button"
                         onClick={() =>
@@ -213,7 +241,26 @@ export default function PlayerRegistrationTable() {
                       >
                         View
                       </button>
-                    </td>
+
+                      {registration.registrationStatus === "PENDING" &&
+                        registration.invitationStatus === "PENDING" && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              handleRegenerateInvitation(registration.playerId)
+                            }
+                            disabled={
+                              regeneratingPlayerId === registration.playerId
+                            }
+                            className="text-sm font-medium text-warning-600 hover:text-warning-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {regeneratingPlayerId === registration.playerId
+                              ? "Regenerating..."
+                              : "Regenerate"}
+                          </button>
+                        )}
+                    </div>
+                  </td>
                   </tr>
                 ))}
               </tbody>

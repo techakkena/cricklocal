@@ -9,11 +9,7 @@ import {
   TableHeader,
   TableRow,
 } from "../components/ui/table";
-import { getGlobalPlayers } from "../api/playersApi";
-import {
-  getPlayerRegistrationManagement,
-  invitePlayerRegistration,
-} from "../api/playerRegistrationApi";
+import { getLocalPlayers } from "../api/playersApi";
 import type { PlayerResponse } from "../api/types";
 
 function formatCreatedDate(createdAt: string) {
@@ -52,54 +48,31 @@ function getTeamNames(player: PlayerResponse) {
     .join(", ");
 }
 
-export default function GlobalPlayers() {
+export default function LocalPlayers() {
   const [players, setPlayers] = useState<PlayerResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
-  const [invitingPlayerId, setInvitingPlayerId] = useState<number | null>(null);
-  const [registrationStatuses, setRegistrationStatuses] = useState<
-    Record< number,
-      {
-        registrationStatus: string | null;
-        invitationStatus: string | null;
-      }
-    > 
-  >({});
 
   useEffect(() => {
     let cancelled = false;
 
-    async function loadGlobalPlayers() {
+    async function loadLocalPlayers() {
       try {
         setLoading(true);
         setError("");
 
-        const [response, registrations] = await Promise.all([
-          getGlobalPlayers(),
-          getPlayerRegistrationManagement(),
-        ]);
-
-        const statusMap = Object.fromEntries(
-          registrations.map((registration) => [
-            registration.playerId,
-            {
-              registrationStatus: registration.registrationStatus,
-              invitationStatus: registration.invitationStatus,
-            },
-          ]),
-        );
+        const response = await getLocalPlayers();
 
         if (!cancelled) {
           setPlayers(response);
-          setRegistrationStatuses(statusMap);
         }
       } catch (err) {
         if (!cancelled) {
           setError(
             err instanceof Error
               ? err.message
-              : "Unable to load global players.",
+              : "Unable to load local players.",
           );
         }
       } finally {
@@ -109,8 +82,8 @@ export default function GlobalPlayers() {
       }
     }
 
-    loadGlobalPlayers();
-    
+    loadLocalPlayers();
+
     return () => {
       cancelled = true;
     };
@@ -140,51 +113,25 @@ export default function GlobalPlayers() {
     });
   }, [players, search]);
 
-    async function handleInvite(playerId: number) {
-      try {
-        setInvitingPlayerId(playerId);
-
-        await invitePlayerRegistration(playerId);
-
-        setRegistrationStatuses((current) => ({
-          ...current,
-          [playerId]: {
-            registrationStatus: current[playerId]?.registrationStatus ?? "PENDING",
-            invitationStatus: "PENDING",
-          },
-        }));
-
-        window.alert("Registration invitation created successfully.");
-      } catch (err) {
-        window.alert(
-          err instanceof Error
-            ? err.message
-            : "Unable to create registration invitation.",
-        );
-      } finally {
-        setInvitingPlayerId(null);
-      }
-    }
-
   return (
     <>
       <PageMeta
-        title="Global Player Directory | CricketLocal"
-        description="View registered CricketLocal global players."
+        title="Local Players | CricketLocal"
+        description="View CricketLocal local players."
       />
 
-      <PageBreadcrumb pageTitle="Global Player Directory" />
+      <PageBreadcrumb pageTitle="Local Players" />
 
       <div className="space-y-6">
         <div className="rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
           <div className="flex flex-col gap-4 border-b border-gray-100 px-5 py-5 sm:flex-row sm:items-center sm:justify-between dark:border-gray-800">
             <div>
               <h3 className="font-semibold text-gray-800 dark:text-white/90">
-                Global Player Directory
+                Local Players
               </h3>
+
               <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                View registered CricketLocal players and their team
-                memberships.
+                View players registered locally in CricketLocal.
               </p>
             </div>
 
@@ -200,14 +147,14 @@ export default function GlobalPlayers() {
           {!loading && !error && players.length > 0 && (
             <div className="border-b border-gray-100 px-5 py-4 dark:border-gray-800">
               <label
-                htmlFor="global-player-search"
+                htmlFor="local-player-search"
                 className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300"
               >
                 Search Players
               </label>
 
               <input
-                id="global-player-search"
+                id="local-player-search"
                 type="search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
@@ -219,7 +166,7 @@ export default function GlobalPlayers() {
 
           {loading && (
             <div className="p-6 text-center text-sm text-gray-500 dark:text-gray-400">
-              Loading global players...
+              Loading local players...
             </div>
           )}
 
@@ -234,10 +181,11 @@ export default function GlobalPlayers() {
           {!loading && !error && players.length === 0 && (
             <div className="p-8 text-center">
               <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                No global players found.
+                No local players found.
               </p>
+
               <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                Registered global players will appear here.
+                Locally registered players will appear here.
               </p>
             </div>
           )}
@@ -250,6 +198,7 @@ export default function GlobalPlayers() {
                 <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
                   No players match your search.
                 </p>
+
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   Try a different player name or search term.
                 </p>
@@ -311,28 +260,18 @@ export default function GlobalPlayers() {
                       >
                         Registered
                       </TableCell>
-                      <TableCell
-                        isHeader
-                        className="px-4 py-3 text-start font-medium text-gray-500 text-theme-xs dark:text-gray-400"
-                      >
-                        Actions
-                      </TableCell>
                     </TableRow>
                   </TableHeader>
 
                   <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-                    {filteredPlayers.map((player) => {
-                    const registrationInfo = registrationStatuses[player.id];
-                    const registrationStatus = registrationInfo?.registrationStatus;
-                    const invitationStatus = registrationInfo?.invitationStatus;
-
-                    return (
+                    {filteredPlayers.map((player) => (
                       <TableRow key={player.id}>
                         <TableCell className="px-5 py-4 text-start sm:px-6">
                           <div>
                             <span className="block font-medium text-gray-800 text-theme-sm dark:text-white/90">
                               {player.displayName}
                             </span>
+
                             <span className="mt-1 block text-xs text-gray-500 dark:text-gray-400">
                               Player #{player.id}
                             </span>
@@ -367,29 +306,8 @@ export default function GlobalPlayers() {
                         <TableCell className="px-4 py-3 text-start text-gray-500 text-theme-sm dark:text-gray-400">
                           {formatCreatedDate(player.createdAt)}
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-start">
-                         <button
-                            type="button"
-                            onClick={() => handleInvite(player.id)}
-                            disabled={
-                              invitingPlayerId === player.id ||
-                              registrationStatus === "REGISTERED" ||
-                              invitationStatus === "PENDING"
-                            }
-                            className="rounded-lg bg-brand-500 px-3 py-2 text-xs font-medium text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {invitingPlayerId === player.id
-                              ? "Inviting..."
-                              : registrationStatus === "REGISTERED"
-                                ? "Registered"
-                                : invitationStatus === "PENDING"
-                                  ? "Invitation Pending"
-                                  : "Invite"}
-                          </button>
-                        </TableCell>
-                          </TableRow>
-                          );
-                        })}
+                      </TableRow>
+                    ))}
                   </TableBody>
                 </Table>
               </div>

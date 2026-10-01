@@ -46,6 +46,25 @@ public class PlayerService {
         return toPlayerResponse(savedPlayer);
     }
 
+    @Transactional
+    public PlayerResponse createLocalPlayer(CreatePlayerRequest request) {
+
+        Player player = new Player();
+
+        player.setFirstName(request.getFirstName());
+        player.setLastName(request.getLastName());
+        player.setDisplayName(request.getDisplayName());
+        player.setPhone(request.getPhone());
+        player.setBattingStyle(request.getBattingStyle());
+        player.setBowlingStyle(request.getBowlingStyle());
+        player.setRole(request.getRole());
+        player.setScope(PlayerScope.LOCAL);
+
+        Player savedPlayer = playerRepository.save(player);
+
+        return toPlayerResponse(savedPlayer);
+    }
+
     @Transactional(readOnly = true)
     public List<PlayerResponse> getAllPlayers() {
 
@@ -59,6 +78,15 @@ public class PlayerService {
     public List<PlayerResponse> getGlobalPlayers() {
 
         return playerRepository.findByScope(PlayerScope.GLOBAL)
+                .stream()
+                .map(this::toPlayerResponse)
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public List<PlayerResponse> getLocalPlayers() {
+
+        return playerRepository.findByScope(PlayerScope.LOCAL)
                 .stream()
                 .map(this::toPlayerResponse)
                 .toList();

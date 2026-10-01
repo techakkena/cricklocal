@@ -1,4 +1,4 @@
-import { apiGet, apiPost } from "./apiClient";
+import { apiDelete, apiGet, apiPost } from "./apiClient";
 import type { SeriesResponse } from "./types";
 
 export interface CreateSeriesRequest {
@@ -10,6 +10,19 @@ export interface CreateSeriesRequest {
 
 export interface AddTeamToSeriesRequest {
   teamId: number;
+}
+
+export interface AddPlayerToSeriesRequest {
+  playerId: number;
+}
+
+export interface SeriesParticipationResponse {
+  id: number;
+  seriesId: number;
+  playerId: number;
+  playerName: string;
+  active: boolean;
+  createdAt: string;
 }
 
 export function getSeries(): Promise<SeriesResponse[]> {
@@ -33,5 +46,32 @@ export function addTeamToSeries(
   return apiPost<SeriesResponse>(
     `/api/series/${seriesId}/teams`,
     request,
+  );
+}
+
+export function addPlayerToSeries(
+  seriesId: number,
+  request: AddPlayerToSeriesRequest,
+): Promise<void> {
+  return apiPost<void>(
+    `/api/series/${seriesId}/players`,
+    request,
+  );
+}
+
+export function getSeriesParticipants(
+  seriesId: number,
+): Promise<SeriesParticipationResponse[]> {
+  return apiGet<SeriesParticipationResponse[]>(
+    `/api/series/${seriesId}/players`,
+  );
+}
+
+export function removePlayerFromSeries(
+  seriesId: number,
+  playerId: number,
+): Promise<void> {
+  return apiDelete<void>(
+    `/api/series/${seriesId}/players/${playerId}`,
   );
 }

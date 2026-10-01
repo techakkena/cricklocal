@@ -2,6 +2,9 @@ package com.cricklocal.controller;
 
 import com.cricklocal.dto.CreateSeriesRequest;
 import com.cricklocal.dto.SeriesResponse;
+import com.cricklocal.dto.AddPlayerToSeriesRequest;
+import com.cricklocal.dto.SeriesParticipationResponse;
+import com.cricklocal.service.SeriesParticipationService;
 import com.cricklocal.service.SeriesService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -16,8 +19,14 @@ public class SeriesController {
 
     private final SeriesService seriesService;
 
-    public SeriesController(SeriesService seriesService) {
+    private final SeriesParticipationService seriesParticipationService;
+
+    public SeriesController(
+            SeriesService seriesService,
+            SeriesParticipationService seriesParticipationService) {
+
         this.seriesService = seriesService;
+        this.seriesParticipationService = seriesParticipationService;
     }
 
     @PostMapping
@@ -47,5 +56,36 @@ public class SeriesController {
             @Valid @RequestBody AddTeamToSeriesRequest request) {
 
         return seriesService.addTeamToSeries(seriesId, request);
+    }
+
+    @PostMapping("/{seriesId}/players")
+    @ResponseStatus(HttpStatus.CREATED)
+    public void addPlayerToSeries(
+            @PathVariable Long seriesId,
+            @Valid @RequestBody AddPlayerToSeriesRequest request) {
+
+        seriesParticipationService.addPlayerToSeries(
+                seriesId,
+                request.getPlayerId()
+        );
+    }
+
+    @GetMapping("/{seriesId}/players")
+    public List<SeriesParticipationResponse> getSeriesParticipants(
+            @PathVariable Long seriesId) {
+
+        return seriesParticipationService.getSeriesParticipants(seriesId);
+    }
+
+    @DeleteMapping("/{seriesId}/players/{playerId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void removePlayerFromSeries(
+            @PathVariable Long seriesId,
+            @PathVariable Long playerId) {
+
+        seriesParticipationService.removePlayerFromSeries(
+                seriesId,
+                playerId
+        );
     }
 }

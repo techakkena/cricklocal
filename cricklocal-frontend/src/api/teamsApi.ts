@@ -63,7 +63,7 @@ export function getTeamPlayers(
 
 export function getTeamCaptain(
   teamId: number,
-): Promise<TeamCaptainResponse> {
+): Promise<TeamCaptainResponse | null> {
   return apiGet<TeamCaptainResponse>(
     `/api/teams/${teamId}/captain`,
   );

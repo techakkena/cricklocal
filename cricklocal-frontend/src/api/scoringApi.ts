@@ -8,6 +8,18 @@ import type {
   SetInningsStateRequest,
 } from "./types";
 
+function getScoreOperatorSessionHeaders(): Record<string, string> {
+  const sessionToken = sessionStorage.getItem(
+    "cricklocal_score_operator_session",
+  );
+
+  return sessionToken
+    ? {
+        "X-Score-Operator-Session": sessionToken,
+      }
+    : {};
+}
+
 export function getInningsState(
   inningsId: number,
 ): Promise<InningsStateResponse> {
@@ -23,6 +35,7 @@ export function setInningsState(
   return apiPost<InningsStateResponse>(
     `/api/innings/${inningsId}/state`,
     request,
+    getScoreOperatorSessionHeaders(),
   );
 }
 
@@ -41,6 +54,7 @@ export function recordDelivery(
   return apiPost<DeliveryResponse>(
     `/api/innings/${inningsId}/deliveries`,
     request,
+    getScoreOperatorSessionHeaders(),
   );
 }
 
@@ -49,6 +63,8 @@ export function undoLastDelivery(
 ): Promise<void> {
   return apiPostNoContent(
     `/api/innings/${inningsId}/deliveries/undo`,
+    {},
+    getScoreOperatorSessionHeaders(),
   );
 }
 

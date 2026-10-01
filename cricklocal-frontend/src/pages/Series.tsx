@@ -3,6 +3,7 @@ import PageBreadcrumb from "../components/common/PageBreadCrumb";
 import PageMeta from "../components/common/PageMeta";
 import Badge from "../components/ui/badge/Badge";
 import { Modal } from "../components/ui/modal";
+import { getGlobalPlayers } from "../api/playersApi";
 import {
   Table,
   TableBody,
@@ -12,11 +13,19 @@ import {
 } from "../components/ui/table";
 import { getTeams } from "../api/teamsApi";
 import {
-  addTeamToSeries,  
+  addPlayerToSeries,
+  addTeamToSeries,
   createSeries,
   getSeries,
+  getSeriesParticipants,
+  removePlayerFromSeries,
+  type SeriesParticipationResponse,
 } from "../api/seriesApi";
-import type { SeriesResponse, TeamResponse } from "../api/types";
+import type {
+  SeriesResponse,
+  TeamResponse,
+  PlayerResponse,
+} from "../api/types";
 
 function formatDate(dateValue: string | null) {
   if (!dateValue) {
@@ -56,6 +65,19 @@ export default function Series() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
+  const [participants, setParticipants] = useState<SeriesParticipationResponse[]>([]);
+  const [participantsLoading, setParticipantsLoading] = useState(false);
+  const [participantsError, setParticipantsError] = useState("");
+  const [isManagePlayersOpen, setIsManagePlayersOpen] = useState(false);
+
+  const [globalPlayers, setGlobalPlayers] = useState<PlayerResponse[]>([]);
+  const [globalPlayersLoading, setGlobalPlayersLoading] = useState(false);
+  const [globalPlayersError, setGlobalPlayersError] = useState("");
+
+  const [selectedPlayerId, setSelectedPlayerId] = useState<number | "">("");
+  const [addingPlayer, setAddingPlayer] = useState(false);
+  const [addPlayerError, setAddPlayerError] = useState("");
+  
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
@@ -93,7 +115,43 @@ export default function Series() {
     }
   }
 
-    async function loadTeams() {
+  async function loadSeriesParticipants(seriesId: number) {
+    try {
+      setParticipantsLoading(true);
+      setParticipantsError("");
+
+      const response = await getSeriesParticipants(seriesId);
+      setParticipants(response);
+    } catch (err) {
+      setParticipantsError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load series participants.",
+      );
+    } finally {
+      setParticipantsLoading(false);
+    }
+  }
+
+  async function loadGlobalPlayers() {
+    try {
+      setGlobalPlayersLoading(true);
+      setGlobalPlayersError("");
+
+      const response = await getGlobalPlayers();
+      setGlobalPlayers(response);
+    } catch (err) {
+      setGlobalPlayersError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load global players.",
+      );
+    } finally {
+      setGlobalPlayersLoading(false);
+    }
+  }
+
+  async function loadTeams() {
     try {
       setTeamsLoading(true);
       setTeamsError("");
@@ -116,6 +174,68 @@ export default function Series() {
     setIsManageTeamsOpen(true);
 
     await loadTeams();
+  }
+
+  async function openManagePlayersModal(item: SeriesResponse) {
+    setSelectedSeries(item);
+    setSelectedPlayerId("");
+    setAddPlayerError("");
+    setParticipantsError("");
+    setParticipants([]);
+    setIsManagePlayersOpen(true);
+
+    await Promise.all([
+      loadSeriesParticipants(item.id),
+      loadGlobalPlayers(),
+    ]);
+  }
+
+  async function handleAddPlayer() {
+    if (!selectedSeries || !selectedPlayerId) {
+      setAddPlayerError("Please select a player.");
+      return;
+    }
+
+    try {
+      setAddingPlayer(true);
+      setAddPlayerError("");
+
+      await addPlayerToSeries(selectedSeries.id, {
+        playerId: Number(selectedPlayerId),
+      });
+
+      setSelectedPlayerId("");
+
+      await loadSeriesParticipants(selectedSeries.id);
+    } catch (err) {
+      setAddPlayerError(
+        err instanceof Error
+          ? err.message
+          : "Unable to add player to series.",
+      );
+    } finally {
+      setAddingPlayer(false);
+    }
+  }
+
+  async function handleRemovePlayer(playerId: number) {
+    if (!selectedSeries) {
+      return;
+    }
+
+    try {
+      setParticipantsError("");
+
+      await removePlayerFromSeries(selectedSeries.id, playerId);
+
+      await loadSeriesParticipants(selectedSeries.id);
+    } catch (err) {
+      setParticipantsError(
+        err instanceof Error
+          ? err.message
+          : "Unable to remove player from series.",
+      );
+    }
   }
 
   function closeManageTeamsModal() {
@@ -434,6 +554,13 @@ export default function Series() {
                         >
                             Manage Teams
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => openManagePlayersModal(item)}
+                          className="text-sm font-medium text-brand-500 hover:text-brand-600"
+                        >
+                          Manage Players
+                        </button>
                     </TableCell>
                     </TableRow>
                   ))}
@@ -685,6 +812,167 @@ export default function Series() {
             </button>
             </div>
         </div>
+    </Modal>
+    <Modal
+      isOpen={isManagePlayersOpen}
+      onClose={() => {
+        setIsManagePlayersOpen(false);
+        setSelectedSeries(null);
+        setParticipants([]);
+        setParticipantsError("");
+      }}
+      className="max-w-[700px] p-6"
+    >
+      <div>
+        <h3 className="text-xl font-semibold text-gray-800 dark:text-white/90">
+          Manage Players
+        </h3>
+
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+          {selectedSeries?.name ?? "Series"}
+        </p>
+
+        <div className="mt-6">
+          <div className="mb-6">
+            <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+              Add Global Player
+            </label>
+
+            <div className="flex gap-3">
+              <select
+                value={selectedPlayerId}
+                onChange={(event) =>
+                  setSelectedPlayerId(
+                    event.target.value ? Number(event.target.value) : "",
+                  )
+                }
+                disabled={globalPlayersLoading || addingPlayer}
+                className="h-11 flex-1 rounded-lg border border-gray-300 bg-white px-4 text-sm text-gray-700 outline-none focus:border-brand-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+              >
+                <option value="">
+                  {globalPlayersLoading
+                    ? "Loading global players..."
+                    : "Select a global player"}
+                </option>
+
+                {globalPlayers.map((player) => (
+                  <option key={player.id} value={player.id}>
+                    {player.displayName}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                onClick={handleAddPlayer}
+                disabled={addingPlayer || !selectedPlayerId}
+                className="rounded-lg bg-brand-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {addingPlayer ? "Adding..." : "Add Player"}
+              </button>
+            </div>
+
+            {globalPlayersError && (
+              <p className="mt-2 text-sm text-red-500">
+                {globalPlayersError}
+              </p>
+            )}
+
+            {addPlayerError && (
+              <p className="mt-2 text-sm text-red-500">
+                {addPlayerError}
+              </p>
+            )}
+          </div>
+          <h4 className="mb-3 text-sm font-semibold text-gray-700 dark:text-gray-300">
+            Series Participants
+          </h4>
+
+          {participantsLoading ? (
+            <div className="rounded-lg border border-gray-200 p-6 text-center text-sm text-gray-500 dark:border-gray-800 dark:text-gray-400">
+              Loading participants...
+            </div>
+          ) : participantsError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-600 dark:border-red-900/40 dark:bg-red-900/10 dark:text-red-400">
+              {participantsError}
+            </div>
+          ) : participants.length === 0 ? (
+            <div className="rounded-lg border border-gray-200 p-6 text-center text-sm text-gray-500 dark:border-gray-800 dark:text-gray-400">
+              No players have been added to this series yet.
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableCell
+                      isHeader
+                      className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400"
+                    >
+                      Player
+                    </TableCell>
+
+                    <TableCell
+                      isHeader
+                      className="px-4 py-3 text-left text-xs font-medium uppercase text-gray-500 dark:text-gray-400"
+                    >
+                      Status
+                    </TableCell>
+
+                    <TableCell
+                      isHeader
+                      className="px-4 py-3 text-right text-xs font-medium uppercase text-gray-500 dark:text-gray-400"
+                    >
+                      Action
+                    </TableCell>
+                  </TableRow>
+                </TableHeader>
+
+                <TableBody>
+                  {participants.map((participant) => (
+                    <TableRow key={participant.id}>
+                      <TableCell className="px-4 py-3 text-sm font-medium text-gray-800 dark:text-white/90">
+                        {participant.playerName}
+                      </TableCell>
+
+                      <TableCell className="px-4 py-3">
+                        <Badge color="success" size="sm">
+                          Active
+                        </Badge>
+                      </TableCell>
+
+                      <TableCell className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => handleRemovePlayer(participant.playerId)}
+                          className="text-sm font-medium text-red-500 hover:text-red-600"
+                        >
+                          Remove
+                        </button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-6 flex justify-end">
+          <button
+            type="button"
+            onClick={() => {
+              setIsManagePlayersOpen(false);
+              setSelectedSeries(null);
+              setParticipants([]);
+              setParticipantsError("");
+            }}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/[0.03]"
+          >
+            Close
+          </button>
+        </div>
+      </div>
     </Modal>
     </>
   );

@@ -88,6 +88,14 @@ public class PlayerController {
         return playerService.createPlayer(request);
     }
 
+    @PostMapping("/local")
+    @ResponseStatus(HttpStatus.CREATED)
+    public PlayerResponse createLocalPlayer(
+                @Valid @RequestBody CreatePlayerRequest request) {
+
+        return playerService.createLocalPlayer(request);
+    }
+
     @GetMapping
     public List<PlayerResponse> getAllPlayers() {
         return playerService.getAllPlayers();
@@ -98,9 +106,14 @@ public class PlayerController {
         return playerService.getGlobalPlayers();
     }
 
-    @GetMapping("/{playerId}")
+    @GetMapping("/local")
+    public List<PlayerResponse> getLocalPlayers() {
+        return playerService.getLocalPlayers();
+    }
+
+    @GetMapping("/{playerId:\\d+}")
     public PlayerResponse getPlayerById(
-            @PathVariable Long playerId) {
+                @PathVariable Long playerId) {
 
         return playerService.getPlayerById(playerId);
     }
@@ -257,6 +270,38 @@ public class PlayerController {
 
         return playerRegistrationRegenerateService
                 .regenerateInvitation(playerId, user);
+    }
+
+    @PostMapping("/registrations/{playerId}/invite")
+    public PlayerRegistrationRegenerateResponse invitePlayerRegistration(
+                @PathVariable Long playerId,
+                Authentication authentication) {
+
+        if (authentication == null
+                || !authentication.isAuthenticated()) {
+
+                throw new IllegalStateException(
+                        "User is not authenticated");
+        }
+
+        if (!(authentication.getPrincipal()
+                instanceof OAuth2User oauth2User)) {
+
+                throw new IllegalStateException(
+                        "Unsupported authentication provider");
+        }
+
+        User user =
+                authenticationService
+                        .getUserForGoogleLogin(oauth2User);
+
+        if (!adminAccessService.hasActiveAdminAccess(user)) {
+                throw new ForbiddenException(
+                        "Active admin access is required");
+        }
+
+        return playerRegistrationRegenerateService
+                .createInvitation(playerId, user);
     }
 
     @GetMapping(

@@ -10,6 +10,7 @@ import {
 } from "../api/matchesApi";
 
 import {
+  getDeliveries,
   getInningsState,
   recordDelivery,
   setInningsState,
@@ -17,6 +18,7 @@ import {
 } from "../api/scoringApi";
 
 import type {
+  DeliveryResponse,
   DismissalEnd,
   InningsResponse,
   InningsStateResponse,
@@ -36,6 +38,10 @@ export default function ScoreOperator() {
   const [innings, setInnings] = useState<InningsResponse | null>(null);
   const [scorecard, setScorecard] =
     useState<ScorecardResponse | null>(null);
+
+  const [deliveries, setDeliveries] =
+  useState<DeliveryResponse[]>([]);
+
   const [lastKnownOver, setLastKnownOver] =
     useState<number | null>(null);
   const [needsNextBowler, setNeedsNextBowler] =
@@ -139,10 +145,12 @@ export default function ScoreOperator() {
         updatedInnings,
         updatedState,
         updatedScorecard,
+        updatedDeliveries,
       ] = await Promise.all([
         getMatchInnings(numericMatchId),
         getInningsState(inningsId),
         getMatchScorecard(numericMatchId),
+        getDeliveries(inningsId),
       ]);
 
       const state = await getInningsState(inningsId);
@@ -171,6 +179,7 @@ export default function ScoreOperator() {
       setInnings(updatedLiveInnings ?? null);
       setInningsStateData(updatedState);
       setScorecard(updatedScorecard);
+      setDeliveries(updatedDeliveries);
     };
 
     useEffect(() => {
@@ -227,7 +236,10 @@ export default function ScoreOperator() {
             const message =
               err instanceof Error ? err.message : "";
 
-            if (message.includes("404")) {
+            if (
+              message.includes("404") ||
+              message.includes("Innings state not found")
+            ) {
               // Newly started innings does not have state yet.
               // The user must initialize striker, non-striker and bowler.
               setInningsStateData(null);
@@ -619,11 +631,69 @@ const handleWicket = async () => {
       player.playerId !== inningsState?.currentBowlerId,
   );
 
+    const battedPlayerIds = new Set(
+    battingInnings?.batting?.map(
+      (player) => player.playerId,
+    ) ?? [],
+  );
+
+  const nextBatterOptions = battingTeamLineup.filter(
+    (player) =>
+      !battedPlayerIds.has(player.playerId) &&
+      player.playerId !== inningsState?.strikerId &&
+      player.playerId !== inningsState?.nonStrikerId,
+  );
+
   const legalBalls =
     battingInnings?.legalBalls ??
     innings?.legalBalls ??
     0;
 
+  const totalOvers = match.totalOvers ?? 0;
+
+  const remainingLegalBalls = Math.max(
+    0,
+    totalOvers * 6 - legalBalls,
+  );
+
+  const pendingOvers = `${Math.floor(remainingLegalBalls / 6)}.${
+    remainingLegalBalls % 6
+  }`;
+
+  const remainingWickets = Math.max(
+    0,
+    10 - (battingInnings?.wickets ?? innings?.wickets ?? 0),
+  );
+
+  const firstInningsScore =
+    scorecard?.innings.find(
+      (item) => item.inningsNumber === 1,
+    )?.totalRuns ?? null;
+
+  const currentScore =
+    battingInnings?.totalRuns ??
+    innings?.totalRuns ??
+    0;
+
+  const runsToChase =
+    innings?.inningsNumber === 2 &&
+    firstInningsScore !== null
+      ? Math.max(0, firstInningsScore + 1 - currentScore)
+      : null;
+
+  const currentOverNumber =
+    inningsState?.currentOver ?? 1;
+
+  const displayOverNumber = needsNextBowler
+    ? Math.max(1, currentOverNumber - 1)
+    : currentOverNumber;
+
+  const currentOverDeliveries =
+    deliveries.filter(
+      (delivery) =>
+        delivery.overNumber === displayOverNumber,
+    );
+  
   console.log("Over state:", {
     currentOver: inningsState?.currentOver,
     legalBallsInOver: inningsState?.legalBallsInOver,
@@ -681,6 +751,82 @@ const handleWicket = async () => {
             {legalBalls % 6} overs
           </p>
         </div>
+      </div>
+      {/* Current Over */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03]">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-white/90">
+              Current Over
+            </h2>
+
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              Over {displayOverNumber}
+            </p>
+          </div>
+
+          <span className="text-sm font-medium text-gray-500 dark:text-gray-400">
+            {currentOverDeliveries.length} delivery
+            {currentOverDeliveries.length !== 1 ? "ies" : ""}
+          </span>
+          <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Pending Overs
+              </p>
+              <p className="mt-1 text-xl font-bold text-gray-800 dark:text-white/90">
+                {pendingOvers}
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Remaining Wickets
+              </p>
+              <p className="mt-1 text-xl font-bold text-gray-800 dark:text-white/90">
+                {remainingWickets}
+              </p>
+            </div>
+
+            {runsToChase !== null && (
+              <div className="col-span-2 rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/40 dark:bg-blue-950/20 sm:col-span-1">
+                <p className="text-xs font-medium uppercase tracking-wide text-blue-600 dark:text-blue-400">
+                  Runs to Chase
+                </p>
+                <p className="mt-1 text-xl font-bold text-blue-700 dark:text-blue-300">
+                  {runsToChase}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {currentOverDeliveries.length === 0 ? (
+          <p className="mt-5 text-sm text-gray-500 dark:text-gray-400">
+            No deliveries recorded in this over yet.
+          </p>
+        ) : (
+          <div className="mt-5 flex flex-wrap gap-3">
+            {currentOverDeliveries.map((delivery) => (
+              <div
+                key={delivery.id}
+                className="min-w-[72px] rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-center dark:border-gray-700 dark:bg-gray-900/40"
+              >
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {delivery.overNumber}.{delivery.ballInOver}
+                </p>
+
+                <p className="mt-1 text-lg font-bold text-gray-800 dark:text-white/90">
+                  {delivery.wicket
+                    ? "W"
+                    : delivery.extraType !== "NONE"
+                      ? `${delivery.totalRuns} ${delivery.extraType.replace("_", " ")}`
+                      : delivery.totalRuns}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Current Players */}
@@ -1039,13 +1185,7 @@ const handleWicket = async () => {
               >
                 <option value="">Select new batter</option>
 
-                {battingTeamLineup
-                  .filter(
-                    (player) =>
-                      player.playerId !== inningsState?.strikerId &&
-                      player.playerId !== inningsState?.nonStrikerId,
-                  )
-                  .map((player) => (
+                {nextBatterOptions.map((player) => (
                     <option
                       key={player.playerId}
                       value={player.playerId}
@@ -1281,7 +1421,9 @@ const handleWicket = async () => {
         {innings?.status === "LIVE" && !inningsState && (
           <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-5 dark:border-blue-900/40 dark:bg-blue-950/20">
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-              Second Innings Setup
+              {innings.inningsNumber === 1
+              ? "First Innings Setup"
+              : "Second Innings Setup"}
             </h2>
 
             <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">

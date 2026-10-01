@@ -91,6 +91,15 @@ export function getPlayerRegistrationInvitation(
   );
 }
 
+export function invitePlayerRegistration(
+    playerId: number,
+  ): Promise<PlayerRegistrationRegenerateResponse> {
+    return apiPost<PlayerRegistrationRegenerateResponse>(
+      `/api/players/registrations/${playerId}/invite`,
+      {},
+    );
+}
+
 export function completePlayerRegistration(
   token: string,
 ): Promise<PlayerRegistrationCompleteResponse> {
@@ -168,3 +177,4 @@ export function backfillPlayerRegistrationInvitations(): Promise<PlayerRegistrat
     {},
   );
 }
+

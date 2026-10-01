@@ -28,11 +28,13 @@ export default function UserDropdown() {
     }
   }
 
-  const displayName =
-    loading || !user ? "CricketLocal User" : user.displayName;
+  const displayName = loading
+    ? "Loading..."
+    : user
+      ? user.displayName
+      : "Not signed in";
 
-  const email =
-    loading || !user ? "" : user.email;
+  const email = user?.email ?? "";
 
   return (
     <div className="relative">

@@ -3,20 +3,33 @@ import { Link, useParams } from "react-router";
 import PageBreadcrumb from "../components/common/PageBreadCrumb";
 import PageMeta from "../components/common/PageMeta";
 import Badge from "../components/ui/badge/Badge";
+import Button from "../components/ui/button/Button";
 import {
   addPlayerToMatch,
   finalizePlayingXI,
   getFinalizedPlayingXI,
   getMatchById,
   getMatchLineup,
+  getMatchInnings,
+  startMatchInnings,
+  generateScoreOperatorAccess,
+  revokeScoreOperatorAccess,
+  type GenerateScoreOperatorAccessResponse,
 } from "../api/matchesApi";
 import { getPlayers } from "../api/playersApi";
 import type {
+  InningsResponse,
   MatchLineupResponse,
   MatchResponse,
   PlayerResponse,
   PlayingXIResponse,
 } from "../api/types";
+import {
+  getToss,
+  recordToss,
+  type TossResponse,
+  type TossDecision,
+} from "../api/tossApi";
 
 type TeamState = {
   teamId: number;
@@ -46,6 +59,21 @@ export default function MatchPreparation() {
   const [error, setError] = useState("");
   const [savingPlayer, setSavingPlayer] = useState<number | null>(null);
   const [finalizingTeam, setFinalizingTeam] = useState<number | null>(null);
+  const [toss, setToss] = useState<TossResponse | null>(null);
+  const [tossWinnerId, setTossWinnerId] = useState<number | "">("");
+  const [tossDecision, setTossDecision] = useState<TossDecision | "">("");
+  const [recordingToss, setRecordingToss] = useState(false);
+  const [startingInnings, setStartingInnings] = useState(false);
+  const [operatorAccess, setOperatorAccess] =
+    useState<GenerateScoreOperatorAccessResponse | null>(null);
+  const [generatingOperatorAccess, setGeneratingOperatorAccess] =
+    useState(false);
+  const [revokingOperatorAccess, setRevokingOperatorAccess] =
+    useState(false);
+  const [copiedOperatorAccess, setCopiedOperatorAccess] =
+    useState<"link" | "code" | null>(null);
+  const [currentInnings, setCurrentInnings] =
+  useState<InningsResponse | null>(null);
 
   useEffect(() => {
     if (!Number.isInteger(numericMatchId) || numericMatchId <= 0) {
@@ -54,74 +82,106 @@ export default function MatchPreparation() {
       return;
     }
 
-    async function loadPreparation() {
+  async function loadPreparation() {
+    try {
+      setLoading(true);
+      setError("");
+
+      const [
+        matchResponse,
+        playersResponse,
+        lineupResponse,
+        inningsResponse,
+      ] = await Promise.all([
+        getMatchById(numericMatchId),
+        getPlayers(),
+        getMatchLineup(numericMatchId),
+        getMatchInnings(numericMatchId),
+      ]);
+
+      setMatch(matchResponse);
+      setPlayers(playersResponse);
+      setLineup(lineupResponse);
+
+      const captainState: Record<number, number | ""> = {};
+      const wicketKeeperState: Record<number, number | ""> = {};
+      const finalizedState: Record<
+        number,
+        PlayingXIResponse | null
+      > = {};
+
+      await Promise.all(
+        matchResponse.teams.map(async (team) => {
+          const teamLineup = lineupResponse.filter(
+            (item) => item.teamId === team.teamId,
+          );
+
+          const captain = teamLineup.find(
+            (item) => item.captain && item.playing,
+          );
+
+          const wicketKeeper = teamLineup.find(
+            (item) => item.wicketKeeper && item.playing,
+          );
+
+          captainState[team.teamId] = captain?.playerId ?? "";
+
+          wicketKeeperState[team.teamId] =
+            wicketKeeper?.playerId ?? "";
+
+          try {
+            const finalizedXI = await getFinalizedPlayingXI(
+              numericMatchId,
+              team.teamId,
+            );
+
+            finalizedState[team.teamId] = finalizedXI;
+          } catch {
+            // A 404 means this team's Playing XI has not been locked yet.
+            finalizedState[team.teamId] = null;
+          }
+        }),
+      );
+
+      setCaptains(captainState);
+      setWicketKeepers(wicketKeeperState);
+      setFinalized(finalizedState);
+
+      const liveInnings =
+        inningsResponse.find(
+          (item) => item.status === "IN_PROGRESS",
+        ) ??
+        inningsResponse.find(
+          (item) => item.status === "LIVE",
+        );
+
+      setCurrentInnings(liveInnings ?? null);
+
+      // Load toss result.
+      // A 404 is expected when the toss has not been recorded yet.
+      let tossResponse: TossResponse | null = null;
+
       try {
-        setLoading(true);
-        setError("");
-
-        const [matchResponse, playersResponse, lineupResponse] =
-          await Promise.all([
-            getMatchById(numericMatchId),
-            getPlayers(),
-            getMatchLineup(numericMatchId),
-          ]);
-
-        setMatch(matchResponse);
-        setPlayers(playersResponse);
-        setLineup(lineupResponse);
-
-        const captainState: Record<number, number | ""> = {};
-        const wicketKeeperState: Record<number, number | ""> = {};
-        const finalizedState: Record<
-          number,
-          PlayingXIResponse | null
-        > = {};
-
-        await Promise.all(
-          matchResponse.teams.map(async (team) => {
-            const teamLineup = lineupResponse.filter(
-              (item) => item.teamId === team.teamId,
-            );
-
-            const captain = teamLineup.find(
-              (item) => item.captain && item.playing,
-            );
-
-            const wicketKeeper = teamLineup.find(
-              (item) => item.wicketKeeper && item.playing,
-            );
-
-            captainState[team.teamId] = captain?.playerId ?? "";
-            wicketKeeperState[team.teamId] =
-              wicketKeeper?.playerId ?? "";
-
-            try {
-              const finalizedXI = await getFinalizedPlayingXI(
-                numericMatchId,
-                team.teamId,
-              );
-
-              finalizedState[team.teamId] = finalizedXI;
-            } catch {
-              // A 404 means this team's Playing XI has not been locked yet.
-              finalizedState[team.teamId] = null;
-            }
-          }),
-        );
-
-        setCaptains(captainState);
-        setWicketKeepers(wicketKeeperState);
-        setFinalized(finalizedState);
+        tossResponse = await getToss(numericMatchId);
       } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Unable to load match preparation.",
-        );
-      } finally {
-        setLoading(false);
+        const message = err instanceof Error ? err.message : "";
+
+        if (!message.includes("Toss not found")) {
+          throw err;
+        }
       }
+
+      setToss(tossResponse);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to load match preparation.",
+      );
+    } finally {
+      setLoading(false);
     }
+  }
 
     void loadPreparation();
   }, [numericMatchId]);
@@ -386,6 +446,128 @@ export default function MatchPreparation() {
       );
     } finally {
       setFinalizingTeam(null);
+    }
+  }
+
+  async function handleRecordToss() {
+    if (!tossWinnerId || !tossDecision) {
+      setError("Please select the toss-winning team and decision.");
+      return;
+    }
+
+    try {
+      setRecordingToss(true);
+      setError("");
+
+      const response = await recordToss(numericMatchId, {
+        winningTeamId: Number(tossWinnerId),
+        decision: tossDecision,
+      });
+
+      setToss(response);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to record toss.",
+      );
+    } finally {
+      setRecordingToss(false);
+    }
+  }
+
+  async function handleGenerateOperatorAccess() {
+  try {
+    setGeneratingOperatorAccess(true);
+    setError("");
+    setCopiedOperatorAccess(null);
+
+    const response = await generateScoreOperatorAccess(numericMatchId);
+
+    setOperatorAccess(response);
+  } catch (err) {
+    setError(
+      err instanceof Error
+        ? err.message
+        : "Unable to generate score operator access.",
+    );
+  } finally {
+    setGeneratingOperatorAccess(false);
+  }
+}
+
+  async function handleRevokeOperatorAccess() {
+    try {
+      setRevokingOperatorAccess(true);
+      setError("");
+
+      await revokeScoreOperatorAccess(numericMatchId);
+
+      setOperatorAccess(null);
+      setCopiedOperatorAccess(null);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to revoke score operator access.",
+      );
+    } finally {
+      setRevokingOperatorAccess(false);
+    }
+  }
+
+  async function handleStartFirstInnings() {
+    if (!bothFinalized) {
+      setError("Both teams must finalize their Playing XI first.");
+      return;
+    }
+
+    if (!toss) {
+      setError("Toss must be recorded before starting the innings.");
+      return;
+    }
+
+    if (!match || teams.length !== 2) {
+      setError("Match teams are not available.");
+      return;
+    }
+
+    const tossWinnerId = toss.winningTeamId;
+
+    const battingTeamId =
+      toss.decision === "BAT"
+        ? tossWinnerId
+        : teams.find((team) => team.teamId !== tossWinnerId)?.teamId;
+
+    const bowlingTeamId =
+      toss.decision === "BOWL"
+        ? tossWinnerId
+        : teams.find((team) => team.teamId !== tossWinnerId)?.teamId;
+
+    if (!battingTeamId || !bowlingTeamId) {
+      setError("Unable to determine batting and bowling teams from the toss.");
+      return;
+    }
+
+    try {
+      setStartingInnings(true);
+      setError("");
+
+      await startMatchInnings(numericMatchId, {
+        inningsNumber: 1,
+        battingTeamId,
+        bowlingTeamId,
+      });
+
+      window.location.href = `/score/match/${numericMatchId}`;
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to start the first innings.",
+      );
+    } finally {
+      setStartingInnings(false);
     }
   }
 
@@ -779,20 +961,289 @@ export default function MatchPreparation() {
                 </h4>
 
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Toss becomes available after support confirmation.
+                  Record the toss result before starting the match.
                 </p>
               </div>
 
-              <Badge size="sm" color="warning">
-                Locked
+              <Badge size="sm" color={toss ? "success" : "warning"}>
+                {toss ? "Recorded" : "Pending"}
               </Badge>
             </div>
 
-            <div className="mt-4 rounded-lg bg-gray-50 p-3 text-xs text-gray-500 dark:bg-white/[0.03] dark:text-gray-400">
-              Toss is intentionally locked until the Support Team
-              confirms both Playing XIs.
+            {toss ? (
+              <div className="mt-4 rounded-lg bg-gray-50 p-4 dark:bg-white/[0.03]">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Toss won by
+                </p>
+
+                <p className="mt-1 font-semibold text-gray-800 dark:text-white/90">
+                  {toss.winningTeamName}
+                </p>
+
+                <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+                  Decision
+                </p>
+
+                <p className="mt-1 font-semibold text-gray-800 dark:text-white/90">
+                  {toss.decision === "BAT" ? "Bat First" : "Bowl First"}
+                </p>
+              </div>
+            ) : (
+              <>
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Toss Winner
+                    </label>
+
+                    <select
+                      value={tossWinnerId}
+                      onChange={(event) =>
+                        setTossWinnerId(
+                          event.target.value
+                            ? Number(event.target.value)
+                            : "",
+                        )
+                      }
+                      disabled={!bothFinalized || recordingToss}
+                      className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                    >
+                      <option value="">Select toss winner</option>
+
+                      {teams.map((team) => (
+                        <option key={team.teamId} value={team.teamId}>
+                          {team.shortName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Decision
+                    </label>
+
+                    <select
+                      value={tossDecision}
+                      onChange={(event) =>
+                        setTossDecision(
+                          event.target.value as TossDecision | "",
+                        )
+                      }
+                      disabled={!bothFinalized || recordingToss}
+                      className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                    >
+                      <option value="">Select decision</option>
+                      <option value="BAT">Bat First</option>
+                      <option value="BOWL">Bowl First</option>
+                    </select>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  disabled={
+                    !bothFinalized ||
+                    !tossWinnerId ||
+                    !tossDecision ||
+                    recordingToss
+                  }
+                  onClick={() => void handleRecordToss()}
+                  className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-lg bg-brand-500 px-4 text-sm font-medium text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {recordingToss
+                    ? "Recording Toss..."
+                    : "Record Toss"}
+                </button>
+
+                {!bothFinalized && (
+                  <div className="mt-4 rounded-lg bg-gray-50 p-3 text-xs text-gray-500 dark:bg-white/[0.03] dark:text-gray-400">
+                    Toss is locked until both teams finalize their Playing XI.
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+                {currentInnings && (
+          <div className="rounded-2xl border border-green-200 bg-green-50 p-5 dark:border-green-900/40 dark:bg-green-950/20">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h4 className="font-semibold text-gray-800 dark:text-white/90">
+                  Match Live
+                </h4>
+
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                  Innings {currentInnings.inningsNumber} is currently in progress.
+                </p>
+
+                <p className="mt-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {currentInnings.battingTeamShortName} are batting.
+                </p>
+              </div>
+
+              <Link
+                to={`/score/match/${numericMatchId}`}
+                className="inline-flex h-11 items-center justify-center rounded-lg bg-success-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-success-700"
+              >
+                Open Live Score
+              </Link>
             </div>
           </div>
+        )}
+
+        {toss && bothFinalized && !currentInnings && (
+          <div className="rounded-2xl border border-green-200 bg-green-50 p-5 dark:border-green-900/40 dark:bg-green-950/20">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h4 className="font-semibold text-gray-800 dark:text-white/90">
+                  Match Ready
+                </h4>
+
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                  {toss.decision === "BAT"
+                    ? `${toss.winningTeamShortName} won the toss and will bat first.`
+                    : `${toss.winningTeamShortName} won the toss and will bowl first.`}
+                </p>
+
+                <p className="mt-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Ready to start the first innings.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void handleStartFirstInnings()}
+                disabled={startingInnings}
+                className="inline-flex h-11 items-center justify-center rounded-lg bg-success-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-success-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {startingInnings
+                  ? "Starting Innings..."
+                  : "Start First Innings"}
+              </button>
+            </div>
+          </div>
+        )}
+        {/* Score Operator Access */}
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h4 className="font-semibold text-gray-800 dark:text-white/90">
+                Score Operator Access
+              </h4>
+
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Generate a private link and security code for the person operating
+                the live score.
+              </p>
+            </div>
+
+            <Badge
+              size="sm"
+              color={operatorAccess ? "success" : "warning"}
+            >
+              {operatorAccess ? "Active" : "Not Generated"}
+            </Badge>
+          </div>
+
+          {!operatorAccess ? (
+            <div className="mt-5">
+              <Button
+                onClick={() => void handleGenerateOperatorAccess()}
+                disabled={generatingOperatorAccess}
+              >
+                {generatingOperatorAccess
+                  ? "Generating..."
+                  : "Generate Operator Access"}
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-5 space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Operator Link
+                </label>
+
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    type="text"
+                    readOnly
+                    value={`${window.location.origin}/score/operator/${operatorAccess.accessToken}`}
+                    className="h-11 min-w-0 flex-1 rounded-lg border border-gray-300 bg-gray-50 px-3 text-sm text-gray-700 outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+                  />
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(
+                        `${window.location.origin}/score/operator/${operatorAccess.accessToken}`,
+                      );
+                      setCopiedOperatorAccess("link");
+                      window.setTimeout(
+                        () => setCopiedOperatorAccess(null),
+                        2000,
+                      );
+                    }}
+                  >
+                    {copiedOperatorAccess === "link"
+                      ? "Copied"
+                      : "Copy Link"}
+                  </Button>
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Security Code
+                </label>
+
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <div className="rounded-lg border border-gray-300 bg-gray-50 px-4 py-2.5 font-mono text-lg font-semibold tracking-[0.3em] text-gray-800 dark:border-gray-700 dark:bg-gray-900 dark:text-white">
+                    {operatorAccess.securityCode}
+                  </div>
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(
+                        operatorAccess.securityCode,
+                      );
+                      setCopiedOperatorAccess("code");
+                      window.setTimeout(
+                        () => setCopiedOperatorAccess(null),
+                        2000,
+                      );
+                    }}
+                  >
+                    {copiedOperatorAccess === "code"
+                      ? "Copied"
+                      : "Copy Code"}
+                  </Button>
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Expires:{" "}
+                {new Date(operatorAccess.expiresAt).toLocaleString()}
+              </p>
+
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void handleRevokeOperatorAccess()}
+                  disabled={revokingOperatorAccess}
+                  className="text-error-600 ring-error-300 hover:bg-error-50"
+                >
+                  {revokingOperatorAccess
+                    ? "Revoking..."
+                    : "Revoke Access"}
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </>

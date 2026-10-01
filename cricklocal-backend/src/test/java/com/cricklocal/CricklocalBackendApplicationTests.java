@@ -2744,6 +2744,10 @@ class CricklocalBackendApplicationTests {
 			throws Exception {
 
 		long initialTeamCount = teamRepository.count();
+                        String testId = java.util.UUID.randomUUID()
+                                .toString()
+                                .replace("-", "")
+                                .substring(0, 8);
 
 		try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook =
 					new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
@@ -2761,14 +2765,14 @@ class CricklocalBackendApplicationTests {
 			org.apache.poi.ss.usermodel.Row firstTeam =
 					sheet.createRow(1);
 
-			firstTeam.createCell(0).setCellValue("CMR WARRIORS");
+			firstTeam.createCell(0).setCellValue("Validation Warriors " + testId);
 			firstTeam.createCell(1).setCellValue("WAR");
 			firstTeam.createCell(2).setCellValue("Hyderabad");
 
 			org.apache.poi.ss.usermodel.Row secondTeam =
 					sheet.createRow(2);
 
-			secondTeam.createCell(0).setCellValue("CMR TITANS");
+			secondTeam.createCell(0).setCellValue("Validation Titans " + testId);
 			secondTeam.createCell(1).setCellValue("TIT");
 			secondTeam.createCell(2).setCellValue("Vijayawada");
 

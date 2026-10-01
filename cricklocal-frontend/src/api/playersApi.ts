@@ -27,12 +27,26 @@ export interface PlayerImportResponse {
   errors: PlayerImportError[];
 }
 
+export interface PlayerRegistrationRegenerateResponse {
+  playerId: number;
+  displayName: string;
+  registrationStatus: string | null;
+  invitationStatus: string;
+  invitationCreatedAt: string;
+  invitationExpiresAt: string;
+  registrationLink: string;
+}
+
 export function getPlayers(): Promise<PlayerResponse[]> {
   return apiGet<PlayerResponse[]>("/api/players");
 }
 
 export function getGlobalPlayers(): Promise<PlayerResponse[]> {
   return apiGet<PlayerResponse[]>("/api/players/global");
+}
+
+export function getLocalPlayers(): Promise<PlayerResponse[]> {
+  return apiGet<PlayerResponse[]>("/api/players/local");
 }
 
 export function getPlayer(playerId: number): Promise<PlayerResponse> {
@@ -66,6 +80,15 @@ export function importPlayersExcel(
   return apiPostMultipart<PlayerImportResponse>(
     "/api/players/import",
     formData,
+  );
+}
+
+export function invitePlayerRegistration(
+  playerId: number,
+): Promise<PlayerRegistrationRegenerateResponse> {
+  return apiPost<PlayerRegistrationRegenerateResponse>(
+    `/api/players/registrations/${playerId}/invite`,
+    {},
   );
 }
 
