@@ -35,7 +35,10 @@ export default function SignInForm() {
               <button
                 type="button"
                 onClick={() => {
-                  window.location.href = "http://localhost:8080/oauth2/authorization/google";
+                  const API_BASE_URL =
+                  import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
+
+                  window.location.href = `${API_BASE_URL}/oauth2/authorization/google`;
                 }}
                 className="inline-flex items-center justify-center w-full gap-3 py-3 text-sm font-normal text-gray-700 transition-colors bg-gray-100 rounded-lg px-7 hover:bg-gray-200 hover:text-gray-800 dark:bg-white/5 dark:text-white/90 dark:hover:bg-white/10"
               >

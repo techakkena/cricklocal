@@ -17,7 +17,10 @@ export default function UserDropdown() {
 
   async function handleSignOut() {
     try {
-      await fetch("http://localhost:8080/logout", {
+      const API_BASE_URL =
+        import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
+
+      await fetch(`${API_BASE_URL}/logout`, {
         method: "POST",
         credentials: "include",
       });
