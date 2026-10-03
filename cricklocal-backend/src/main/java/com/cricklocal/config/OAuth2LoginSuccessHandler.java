@@ -5,6 +5,7 @@ import com.cricklocal.service.AuthenticationService;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.AuthenticationSuccessHandler;
@@ -16,11 +17,14 @@ import java.io.IOException;
 public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
     private final AuthenticationService authenticationService;
+    private final String frontendUrl;
 
     public OAuth2LoginSuccessHandler(
-            AuthenticationService authenticationService
+            AuthenticationService authenticationService,
+            @Value("${app.frontend.url}") String frontendUrl
     ) {
         this.authenticationService = authenticationService;
+        this.frontendUrl = frontendUrl;
     }
 
     @Override
@@ -42,6 +46,8 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             return;
         }
 
-        response.sendRedirect("http://localhost:5173/login/success");
+        response.sendRedirect(
+                frontendUrl + "/login/success"
+        );
     }
 }
