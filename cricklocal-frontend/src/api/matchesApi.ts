@@ -47,7 +47,7 @@ export interface ValidateScoreOperatorAccessResponse {
 export interface GenerateScoreDisplayAccessResponse {
   matchId: number;
   displayToken: string;
-  expiresAt: string;
+  expiresAt: string | null;
 }
 
 export interface ValidateScoreDisplayAccessResponse {
