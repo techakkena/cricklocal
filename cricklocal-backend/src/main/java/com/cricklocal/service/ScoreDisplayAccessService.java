@@ -38,12 +38,25 @@ public class ScoreDisplayAccessService {
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Match not found"));
 
-        accessRepository.findFirstByMatchAndActiveTrue(match)
-                .ifPresent(existing -> {
-                    existing.setActive(false);
-                    existing.setRevokedAt(Instant.now());
-                    accessRepository.save(existing);
-                });
+        Instant now = Instant.now();
+
+        var existing = accessRepository.findFirstByMatchAndActiveTrue(match)
+                .orElse(null);
+
+        if (existing != null
+                && (existing.getExpiresAt() == null
+                    || existing.getExpiresAt().isAfter(now))) {
+            return new GeneratedDisplayAccess(
+                    existing.getDisplayToken(),
+                    existing.getExpiresAt()
+            );
+        }
+
+        if (existing != null) {
+            existing.setActive(false);
+            existing.setRevokedAt(now);
+            accessRepository.save(existing);
+        }
 
         String displayToken = generateToken();
 
