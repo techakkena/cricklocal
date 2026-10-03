@@ -732,18 +732,8 @@ public class DeliveryService {
                                         state.getLegalBallsInOver() - 1));
                 }
 
-                // Reverse the odd-runs batter exchange.
-                if (delivery.getRunsOffBat() % 2 != 0) {
-
-                        Player striker = state.getStriker();
-
-                        state.setStriker(
-                                state.getNonStriker());
-
-                        state.setNonStriker(striker);
-                }
-
-                // Reverse wicket replacement.
+                // Reverse wicket replacement after restoring the
+                // physical ends for an end-of-over delivery.
                 if (Boolean.TRUE.equals(delivery.getWicket())
                         && delivery.getDismissedPlayer() != null) {
 
@@ -760,6 +750,17 @@ public class DeliveryService {
                         state.setNonStriker(
                                 delivery.getDismissedPlayer());
                         }
+                }
+
+                // Reverse the odd-runs batter exchange.
+                if (delivery.getRunsOffBat() % 2 != 0) {
+
+                        Player striker = state.getStriker();
+
+                        state.setStriker(
+                                state.getNonStriker());
+
+                        state.setNonStriker(striker);
                 }
 
                 inningsStateRepository.save(state);
@@ -1314,46 +1315,40 @@ public class DeliveryService {
                 Delivery delivery,
                 Player newBatter) {
 
-        // If a wicket falls, replace the dismissed batter
-        // at the correct end.
-        if (Boolean.TRUE.equals(delivery.getWicket())
-                && newBatter != null) {
-
-        Player dismissedPlayer =
-                delivery.getDismissedPlayer();
-
-        DismissalEnd dismissalEnd =
-                delivery.getDismissalEnd();
-
-        if (dismissalEnd == DismissalEnd.STRIKER) {
-
-                state.setStriker(newBatter);
-
-        } else if (dismissalEnd == DismissalEnd.NON_STRIKER) {
-
-                state.setNonStriker(newBatter);
-        }
-        }
-
         // Odd number of completed runs means the batters change ends.
         // For Bye and Leg Bye, runsOffBat is 0, so include extraRuns.
-        // Wide/No Ball extra runs are intentionally excluded here because
-        // they do not represent completed runs by the batters in the same way.
         int runsForStrikeRotation = delivery.getRunsOffBat();
 
         if (delivery.getExtraType() == ExtraType.BYE
                 || delivery.getExtraType() == ExtraType.LEG_BYE) {
-        runsForStrikeRotation += delivery.getExtraRuns();
+                runsForStrikeRotation += delivery.getExtraRuns();
         }
 
         if (runsForStrikeRotation % 2 != 0) {
 
-        Player striker = state.getStriker();
+                Player striker = state.getStriker();
 
-        state.setStriker(
-                state.getNonStriker());
+                state.setStriker(
+                        state.getNonStriker());
 
-        state.setNonStriker(striker);
+                state.setNonStriker(striker);
+        }
+
+        // The dismissal end is the physical end where the wicket occurred,
+        // not necessarily the end where the dismissed batter started the ball.
+        // This supports all four valid combinations:
+        // striker/non-striker x striker end/non-striker end.
+        if (Boolean.TRUE.equals(delivery.getWicket())
+                && newBatter != null) {
+
+                DismissalEnd dismissalEnd =
+                        delivery.getDismissalEnd();
+
+                if (dismissalEnd == DismissalEnd.STRIKER) {
+                        state.setStriker(newBatter);
+                } else if (dismissalEnd == DismissalEnd.NON_STRIKER) {
+                        state.setNonStriker(newBatter);
+                }
         }
 
         // Only legal deliveries count toward the six-ball over.
@@ -1364,25 +1359,21 @@ public class DeliveryService {
 
                 if (legalBalls == 6) {
 
-                state.setLegalBallsInOver(0);
+                        state.setLegalBallsInOver(0);
+                        state.setCurrentOver(
+                                state.getCurrentOver() + 1);
 
-                state.setCurrentOver(
-                        state.getCurrentOver() + 1);
+                        // At the end of the over, the batters change ends.
+                        Player striker = state.getStriker();
 
-                // At the end of the over,
-                // the batters change ends.
-                Player striker =
-                        state.getStriker();
+                        state.setStriker(
+                                state.getNonStriker());
 
-                state.setStriker(
-                        state.getNonStriker());
-
-                state.setNonStriker(striker);
+                        state.setNonStriker(striker);
 
                 } else {
 
-                state.setLegalBallsInOver(
-                        legalBalls);
+                        state.setLegalBallsInOver(legalBalls);
                 }
         }
 
