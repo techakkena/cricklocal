@@ -741,7 +741,7 @@ export default function ScoreDisplay() {
 
             {/* Current Bowler */}
             <div
-              className={`rounded-2xl border p-5 ${cardClasses}`}
+              className={`rounded-2xl border p-5 md:col-span-3 ${cardClasses}`}
             >
               <p
                 className={`text-xs font-semibold uppercase tracking-widest ${secondaryText}`}
@@ -823,6 +823,146 @@ export default function ScoreDisplay() {
                     );
                   })()
                 )}
+            </div>
+            {/* Bowling Figures */}
+            <div className="md:col-span-3">
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="text-base font-bold sm:text-lg">
+                  Bowling Figures
+                </h3>
+
+                <span className={`text-xs ${secondaryText}`}>
+                  {liveInnings.bowling?.filter(
+                    (player) => player.ballsBowled > 0,
+                  ).length ?? 0}{" "}
+                  bowlers
+                </span>
+              </div>
+
+              {liveInnings.bowling &&
+              liveInnings.bowling.filter(
+                (player) => player.ballsBowled > 0,
+              ).length > 0 ? (
+                <div className="overflow-x-auto rounded-xl border border-gray-800">
+                  <table className="w-full min-w-[700px] text-left">
+                    <thead
+                      className={
+                        darkMode
+                          ? "bg-gray-800/70"
+                          : "bg-gray-50"
+                      }
+                    >
+                      <tr>
+                        <th className="px-3 py-3 text-xs font-semibold uppercase tracking-wide">
+                          Bowler
+                        </th>
+
+                        <th className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide">
+                          O
+                        </th>
+
+                        <th className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide">
+                          M
+                        </th>
+
+                        <th className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide">
+                          R
+                        </th>
+
+                        <th className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide">
+                          W
+                        </th>
+
+                        <th className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide">
+                          Extras
+                        </th>
+
+                        <th className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide">
+                          Econ
+                        </th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {liveInnings.bowling
+                        .filter(
+                          (player) => player.ballsBowled > 0,
+                        )
+                        .map((player) => {
+                          const economy =
+                            player.ballsBowled > 0
+                              ? (
+                                  (player.runsConceded /
+                                    player.ballsBowled) *
+                                  6
+                                ).toFixed(1)
+                              : "0.0";
+
+                          const extras =
+                            player.wides + player.noBalls;
+
+                          return (
+                            <tr
+                              key={player.id}
+                              className={
+                                darkMode
+                                  ? "border-t border-gray-800"
+                                  : "border-t border-gray-200"
+                              }
+                            >
+                              <td className="px-3 py-3">
+                                <span className="font-semibold">
+                                  {player.playerName}
+                                </span>
+
+                                {player.playerId ===
+                                  currentBowlerId && (
+                                  <span className="ml-2 rounded-full bg-brand-500/15 px-2 py-0.5 text-[10px] font-bold text-brand-500">
+                                    CURRENT
+                                  </span>
+                                )}
+                              </td>
+
+                              <td
+                                className={`px-3 py-3 text-right ${secondaryText}`}
+                              >
+                                {player.overs}
+                              </td>
+
+                              <td
+                                className={`px-3 py-3 text-right ${secondaryText}`}
+                              >
+                                {player.maidens}
+                              </td>
+
+                              <td className="px-3 py-3 text-right font-bold">
+                                {player.runsConceded}
+                              </td>
+
+                              <td className="px-3 py-3 text-right font-bold">
+                                {player.wickets}
+                              </td>
+
+                              <td
+                                className={`px-3 py-3 text-right ${secondaryText}`}
+                              >
+                                {extras}
+                              </td>
+
+                              <td className="px-3 py-3 text-right font-semibold">
+                                {economy}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className={`text-sm ${secondaryText}`}>
+                  No bowling data available.
+                </p>
+              )}
             </div>
           </section>
         )}
