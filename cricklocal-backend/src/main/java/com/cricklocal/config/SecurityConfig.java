@@ -104,7 +104,10 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
 
         configuration.setAllowedOrigins(
-                java.util.List.of("http://localhost:5173")
+                java.util.List.of(
+                        "http://localhost:5173",
+                        "https://cricklocal-eight.vercel.app"
+                )
         );
 
         configuration.setAllowedMethods(
