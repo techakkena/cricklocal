@@ -813,7 +813,7 @@ const handleWicket = async () => {
                 className="min-w-[72px] rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-center dark:border-gray-700 dark:bg-gray-900/40"
               >
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {delivery.overNumber}.{delivery.ballInOver}
+                  {delivery.overNumber - 1}.{delivery.ballInOver}
                 </p>
 
                 <p className="mt-1 text-lg font-bold text-gray-800 dark:text-white/90">
