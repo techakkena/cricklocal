@@ -4,6 +4,8 @@ import { useParams } from "react-router";
 import {
   getInningsDeliveries,
   getInningsState,
+  getMatchById,
+  getMatchLineup,
   getMatchScorecard,
   validateScoreDisplayAccess,
 } from "../../api/matchesApi";
@@ -11,6 +13,8 @@ import {
 import type {
   DeliveryResponse,
   InningsStateResponse,
+  MatchLineupResponse,
+  MatchResponse,
   ScorecardResponse,
 } from "../../api/types";
 
@@ -164,6 +168,46 @@ function getCurrentOverDeliveries(
   });
 }
 
+function getBattingPlayers(
+  innings: ScorecardResponse["innings"][number],
+  matchLineup: MatchLineupResponse[],
+) {
+  const teamPlayers = matchLineup.filter(
+    (player) =>
+      player.teamId === innings.battingTeamId &&
+      player.playing,
+  );
+
+  return teamPlayers
+    .map((player) => {
+      const batting = innings.batting.find(
+        (batter) =>
+          batter.playerId === player.playerId,
+      );
+
+      return {
+        player,
+        batting,
+      };
+    })
+    .sort((a, b) => {
+      if (a.batting && b.batting) {
+        return (
+          a.batting.battingPosition -
+          b.batting.battingPosition
+        );
+      }
+
+      if (a.batting) return -1;
+      if (b.batting) return 1;
+
+      return (
+        (a.player.jerseyNumber ?? 999) -
+        (b.player.jerseyNumber ?? 999)
+      );
+    });
+}
+
 export default function ScoreDisplay() {
   const { displayToken } = useParams<{
     displayToken: string;
@@ -171,6 +215,11 @@ export default function ScoreDisplay() {
 
   const [scorecard, setScorecard] =
     useState<ScorecardResponse | null>(null);
+
+  const [match, setMatch] =
+  useState<MatchResponse | null>(null);
+
+  const [matchLineup, setMatchLineup] = useState<MatchLineupResponse[]>([]);
 
   const [deliveries, setDeliveries] = useState<
     DeliveryResponse[]
@@ -205,10 +254,16 @@ export default function ScoreDisplay() {
         const access =
           await validateScoreDisplayAccess(token);
 
-        const response =
-          await getMatchScorecard(access.matchId);
+        const [response, lineupResponse, matchResponse] =
+          await Promise.all([
+            getMatchScorecard(access.matchId),
+            getMatchLineup(access.matchId),
+            getMatchById(access.matchId),
+          ]);
 
         setScorecard(response);
+        setMatchLineup(lineupResponse);
+        setMatch(matchResponse);
 
         const liveInnings =
           response.innings.find(
@@ -525,6 +580,7 @@ export default function ScoreDisplay() {
 
           {/* Chase panel */}
           {isSecondInnings &&
+            liveInnings?.status !== "COMPLETED" &&
             target !== null &&
             runsRequired !== null &&
             liveInnings && (
@@ -568,7 +624,19 @@ export default function ScoreDisplay() {
               </div>
             )}
         </section>
+          {isSecondInnings &&
+            liveInnings?.status === "COMPLETED" &&
+            scorecard.result && (
+              <div className="border-t border-success-500/20 px-4 py-5 text-center sm:px-8">
+                <p className="text-xs font-semibold uppercase tracking-widest text-success-500">
+                  MATCH COMPLETED
+                </p>
 
+                <p className="mt-2 text-xl font-bold text-success-500 sm:text-2xl">
+                  {scorecard.result.resultText ?? "Match completed"}
+                </p>
+              </div>
+            )}
         {/* Current Players */}
         {liveInnings && (
           <section className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -1149,10 +1217,8 @@ export default function ScoreDisplay() {
                         <p
                           className={`text-xs ${secondaryText}`}
                         >
-                          {formatOvers(
-                            innings.legalBalls,
-                          )}{" "}
-                          ov
+                          {formatOvers(innings.legalBalls)} /{" "}
+                          {match?.totalOvers ?? "—"} overs
                         </p>
                       </div>
 
@@ -1194,9 +1260,8 @@ export default function ScoreDisplay() {
                           </p>
 
                           <p className="mt-1 text-xl font-bold">
-                            {formatOvers(
-                              innings.legalBalls,
-                            )}
+                            {formatOvers(innings.legalBalls)} /{" "}
+                            {match?.totalOvers ?? "—"} overs
                           </p>
                         </div>
 
@@ -1235,15 +1300,17 @@ export default function ScoreDisplay() {
                           <span
                             className={`text-xs ${secondaryText}`}
                           >
-                            {innings.batting
-                              ?.length ?? 0}{" "}
-                            players
+                            {getBattingPlayers(
+                                innings,
+                                matchLineup,
+                              ).length} players
                           </span>
                         </div>
 
-                        {innings.batting &&
-                        innings.batting.length >
-                          0 ? (
+                        {getBattingPlayers(
+                            innings,
+                            matchLineup,
+                          ).length > 0 ? (
                           <div className="overflow-x-auto rounded-xl border border-gray-800">
                             <table className="w-full min-w-[650px] text-left">
                               <thead
@@ -1285,31 +1352,34 @@ export default function ScoreDisplay() {
                               </thead>
 
                               <tbody>
-                                {innings.batting.map(
-                                  (player) => {
+                                {getBattingPlayers(
+                                    innings,
+                                    matchLineup,
+                                  ).map(({ player: lineupPlayer, batting }) => {
                                     const strikeRate =
-                                      player.ballsFaced >
-                                      0
+                                      batting && batting.ballsFaced > 0
                                         ? (
-                                            (player.runs /
-                                              player.ballsFaced) *
+                                            (batting.runs /
+                                              batting.ballsFaced) *
                                             100
                                           ).toFixed(1)
                                         : "0.0";
 
                                     const isStriker =
+                                      batting &&
                                       innings.inningsId ===
                                         liveInnings?.inningsId &&
-                                      player.playerId === strikerId
+                                      lineupPlayer.playerId === strikerId;
 
                                     const isNonStriker =
+                                      batting &&
                                       innings.inningsId ===
                                         liveInnings?.inningsId &&
-                                      player.playerId === nonStrikerId
+                                      lineupPlayer.playerId === nonStrikerId;
 
                                     return (
                                       <tr
-                                        key={player.id}
+                                        key={lineupPlayer.id}
                                         className={
                                           darkMode
                                             ? "border-t border-gray-800"
@@ -1317,76 +1387,70 @@ export default function ScoreDisplay() {
                                         }
                                       >
                                         <td className="px-3 py-3">
-                                          <div className="flex items-center gap-2">
-                                            <span className="font-semibold">
-                                              {player.playerName}
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-semibold">
+                                            {lineupPlayer.playerName}
+                                          </span>
+
+                                          {isStriker && (
+                                            <span className="rounded-full bg-brand-500/15 px-2 py-0.5 text-[10px] font-bold text-brand-500">
+                                              STRIKER
                                             </span>
+                                          )}
 
-                                            {isStriker && (
-                                              <span className="rounded-full bg-brand-500/15 px-2 py-0.5 text-[10px] font-bold text-brand-500">
-                                                STRIKER
-                                              </span>
-                                            )}
+                                          {isNonStriker && (
+                                            <span className="rounded-full bg-gray-500/15 px-2 py-0.5 text-[10px] font-bold text-gray-400">
+                                              NON-STRIKER
+                                            </span>
+                                          )}
+                                        </div>
 
-                                            {isNonStriker && (
-                                              <span className="rounded-full bg-gray-500/15 px-2 py-0.5 text-[10px] font-bold text-gray-400">
-                                                NON-STRIKER
-                                              </span>
-                                            )}
-                                          </div>
+                                        {batting?.dismissed &&
+                                          batting.dismissalType && (
+                                            <div
+                                              className={`mt-1 text-xs ${secondaryText}`}
+                                            >
+                                              {batting.dismissalType}
 
-                                          {player.dismissed &&
-                                            player.dismissalType && (
-                                              <div
-                                                className={`mt-1 text-xs ${secondaryText}`}
-                                              >
-                                                {
-                                                  player.dismissalType
-                                                }
-
-                                                {player.dismissedByPlayerName
-                                                  ? ` · ${player.dismissedByPlayerName}`
-                                                  : ""}
-                                              </div>
-                                            )}
-                                        </td>
+                                              {batting.dismissedByPlayerName
+                                                ? ` · ${batting.dismissedByPlayerName}`
+                                                : ""}
+                                            </div>
+                                          )}
+                                      </td>
 
                                         <td className="px-3 py-3 text-right font-bold">
-                                          {player.runs}
+                                          {batting ? batting.runs : "—"}
                                         </td>
 
                                         <td
                                           className={`px-3 py-3 text-right ${secondaryText}`}
                                         >
-                                          {
-                                            player.ballsFaced
-                                          }
+                                          {batting ? batting.ballsFaced : "—"}
                                         </td>
 
                                         <td
                                           className={`px-3 py-3 text-right ${secondaryText}`}
                                         >
-                                          {
-                                            player.fours
-                                          }
+                                          {batting ? batting.fours : "—"}
                                         </td>
 
                                         <td
                                           className={`px-3 py-3 text-right ${secondaryText}`}
                                         >
-                                          {
-                                            player.sixes
-                                          }
+                                          {batting ? batting.sixes : "—"}
                                         </td>
 
                                         <td className="px-3 py-3 text-right font-semibold">
-                                          {
-                                            strikeRate
-                                          }
+                                          {batting ? strikeRate : "—"}
                                         </td>
 
                                         <td className="px-3 py-3 text-right">
-                                          {player.dismissed ? (
+                                          {!batting ? (
+                                            <span className="text-xs font-semibold uppercase text-gray-400">
+                                              YET TO BAT
+                                            </span>
+                                          ) : batting.dismissed ? (
                                             <span className="text-xs font-semibold text-red-500">
                                               OUT
                                             </span>
