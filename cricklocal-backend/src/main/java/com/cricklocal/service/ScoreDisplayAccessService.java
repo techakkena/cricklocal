@@ -10,14 +10,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 
 @Service
 public class ScoreDisplayAccessService {
 
     private static final int TOKEN_BYTES = 32;
-    private static final long ACCESS_DURATION_DAYS = 7;
-
     private final ScoreDisplayAccessRepository accessRepository;
     private final MatchRepository matchRepository;
 
@@ -34,7 +31,7 @@ public class ScoreDisplayAccessService {
     @Transactional
     public GeneratedDisplayAccess generateAccess(Long matchId) {
 
-        Match match = matchRepository.findById(matchId)
+        Match match = matchRepository.findByIdForUpdate(matchId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Match not found"));
 
@@ -64,12 +61,9 @@ public class ScoreDisplayAccessService {
         access.setMatch(match);
         access.setDisplayToken(displayToken);
         access.setActive(true);
-        access.setExpiresAt(
-                Instant.now().plus(
-                        ACCESS_DURATION_DAYS,
-                        ChronoUnit.DAYS
-                )
-        );
+        // The public score-display URL is stable for the life of the match.
+        // It is invalidated only when the administrator explicitly revokes it.
+        access.setExpiresAt(null);
 
         ScoreDisplayAccess saved = accessRepository.save(access);
 
