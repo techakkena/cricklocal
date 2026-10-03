@@ -14,7 +14,10 @@ import {
   startMatchInnings,
   generateScoreOperatorAccess,
   revokeScoreOperatorAccess,
+  generateScoreDisplayAccess,
+  revokeScoreDisplayAccess,
   type GenerateScoreOperatorAccessResponse,
+  type GenerateScoreDisplayAccessResponse,
 } from "../api/matchesApi";
 import { getPlayers } from "../api/playersApi";
 import type {
@@ -72,6 +75,12 @@ export default function MatchPreparation() {
     useState(false);
   const [copiedOperatorAccess, setCopiedOperatorAccess] =
     useState<"link" | "code" | null>(null);
+  const [displayAccess, setDisplayAccess] =
+  useState<GenerateScoreDisplayAccessResponse | null>(null);
+  const [revokingDisplayAccess, setRevokingDisplayAccess] =
+    useState(false);
+  const [copiedDisplayAccess, setCopiedDisplayAccess] =
+    useState(false);
   const [currentInnings, setCurrentInnings] =
   useState<InningsResponse | null>(null);
 
@@ -477,24 +486,30 @@ export default function MatchPreparation() {
   }
 
   async function handleGenerateOperatorAccess() {
-  try {
-    setGeneratingOperatorAccess(true);
-    setError("");
-    setCopiedOperatorAccess(null);
+    try {
+      setGeneratingOperatorAccess(true);
+      setError("");
+      setCopiedOperatorAccess(null);
+      setCopiedDisplayAccess(false);
 
-    const response = await generateScoreOperatorAccess(numericMatchId);
+      const response = await generateScoreOperatorAccess(numericMatchId);
 
-    setOperatorAccess(response);
-  } catch (err) {
-    setError(
-      err instanceof Error
-        ? err.message
-        : "Unable to generate score operator access.",
-    );
-  } finally {
-    setGeneratingOperatorAccess(false);
+      setOperatorAccess(response);
+
+      const displayResponse =
+        await generateScoreDisplayAccess(numericMatchId);
+
+      setDisplayAccess(displayResponse);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to generate score access.",
+      );
+    } finally {
+      setGeneratingOperatorAccess(false);
+    }
   }
-}
 
   async function handleRevokeOperatorAccess() {
     try {
@@ -513,6 +528,26 @@ export default function MatchPreparation() {
       );
     } finally {
       setRevokingOperatorAccess(false);
+    }
+  }
+
+  async function handleRevokeDisplayAccess() {
+    try {
+      setRevokingDisplayAccess(true);
+      setError("");
+
+      await revokeScoreDisplayAccess(numericMatchId);
+
+      setDisplayAccess(null);
+      setCopiedDisplayAccess(false);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to revoke score display access.",
+      );
+    } finally {
+      setRevokingDisplayAccess(false);
     }
   }
 
@@ -1238,6 +1273,90 @@ export default function MatchPreparation() {
                   className="text-error-600 ring-error-300 hover:bg-error-50"
                 >
                   {revokingOperatorAccess
+                    ? "Revoking..."
+                    : "Revoke Access"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+        {/* Public Score Display Access */}
+        <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03]">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h4 className="font-semibold text-gray-800 dark:text-white/90">
+                Public Score Display
+              </h4>
+
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Generate a public link that anyone can use to view the live score.
+              </p>
+            </div>
+
+            <Badge
+              size="sm"
+              color={displayAccess ? "success" : "warning"}
+            >
+              {displayAccess ? "Active" : "Not Generated"}
+            </Badge>
+          </div>
+
+          {!displayAccess ? (
+              <div className="mt-5">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Generate Operator Access above to create the public display link.
+                </p>
+              </div>
+            ) : (
+            <div className="mt-5 space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Public Display Link
+                </label>
+
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <input
+                    type="text"
+                    readOnly
+                    value={`${window.location.origin}/score/display/${displayAccess.displayToken}`}
+                    className="h-11 min-w-0 flex-1 rounded-lg border border-gray-300 bg-gray-50 px-3 text-sm text-gray-700 outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
+                  />
+
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(
+                        `${window.location.origin}/score/display/${displayAccess.displayToken}`,
+                      );
+
+                      setCopiedDisplayAccess(true);
+
+                      window.setTimeout(
+                        () => setCopiedDisplayAccess(false),
+                        2000,
+                      );
+                    }}
+                  >
+                    {copiedDisplayAccess ? "Copied" : "Copy Link"}
+                  </Button>
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Expires:{" "}
+                {new Date(displayAccess.expiresAt).toLocaleString()}
+              </p>
+
+              <div className="flex justify-end">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => void handleRevokeDisplayAccess()}
+                  disabled={revokingDisplayAccess}
+                  className="text-error-600 ring-error-300 hover:bg-error-50"
+                >
+                  {revokingDisplayAccess
                     ? "Revoking..."
                     : "Revoke Access"}
                 </Button>
