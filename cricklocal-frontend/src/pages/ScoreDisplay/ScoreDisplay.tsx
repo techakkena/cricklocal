@@ -164,33 +164,6 @@ function getCurrentOverDeliveries(
   });
 }
 
-function getPlayerName(
-  innings: ScorecardResponse["innings"][number],
-  playerId: number | null | undefined,
-): string {
-  if (!playerId) {
-    return "—";
-  }
-
-  const battingPlayer = innings.batting?.find(
-    (player) => player.id === playerId,
-  );
-
-  if (battingPlayer) {
-    return battingPlayer.playerName;
-  }
-
-  const bowlingPlayer = innings.bowling?.find(
-    (player) => player.id === playerId,
-  );
-
-  if (bowlingPlayer) {
-    return bowlingPlayer.playerName;
-  }
-
-  return "—";
-}
-
 export default function ScoreDisplay() {
   const { displayToken } = useParams<{
     displayToken: string;
@@ -398,28 +371,13 @@ export default function ScoreDisplay() {
     inningsState?.currentBowlerId;
 
   const strikerName =
-    liveInnings && strikerId
-      ? getPlayerName(
-          liveInnings,
-          strikerId,
-        )
-      : "—";
+    inningsState?.strikerName ?? "—";
 
   const nonStrikerName =
-    liveInnings && nonStrikerId
-      ? getPlayerName(
-          liveInnings,
-          nonStrikerId,
-        )
-      : "—";
+    inningsState?.nonStrikerName ?? "—";
 
   const currentBowlerName =
-    liveInnings && currentBowlerId
-      ? getPlayerName(
-          liveInnings,
-          currentBowlerId,
-        )
-      : "—";
+    inningsState?.currentBowlerName ?? "—";
 
   const pageClasses = darkMode
     ? "min-h-screen bg-gray-950 text-white"
@@ -634,10 +592,8 @@ export default function ScoreDisplay() {
                   (() => {
                     const batter =
                       liveInnings.batting.find(
-                        (player) =>
-                          player.id ===
-                          strikerId,
-                      );
+                        (player) => player.playerId === strikerId,
+                    );
 
                     if (!batter) {
                       return null;
@@ -712,7 +668,7 @@ export default function ScoreDisplay() {
                     const batter =
                       liveInnings.batting.find(
                         (player) =>
-                          player.id ===
+                          player.playerId ===
                           nonStrikerId,
                       );
 
@@ -789,7 +745,7 @@ export default function ScoreDisplay() {
                     const bowler =
                       liveInnings.bowling.find(
                         (player) =>
-                          player.id ===
+                          player.playerId ===
                           currentBowlerId,
                       );
 
@@ -1190,20 +1146,16 @@ export default function ScoreDisplay() {
                                     const isStriker =
                                       innings.inningsId ===
                                         liveInnings?.inningsId &&
-                                      player.id ===
-                                        strikerId;
+                                      player.playerId === strikerId
 
                                     const isNonStriker =
                                       innings.inningsId ===
                                         liveInnings?.inningsId &&
-                                      player.id ===
-                                        nonStrikerId;
+                                      player.playerId === nonStrikerId
 
                                     return (
                                       <tr
-                                        key={
-                                          player.id
-                                        }
+                                        key={player.id}
                                         className={
                                           darkMode
                                             ? "border-t border-gray-800"
