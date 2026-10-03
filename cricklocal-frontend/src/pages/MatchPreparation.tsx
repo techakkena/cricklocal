@@ -495,11 +495,6 @@ export default function MatchPreparation() {
       const response = await generateScoreOperatorAccess(numericMatchId);
 
       setOperatorAccess(response);
-
-      const displayResponse =
-        await generateScoreDisplayAccess(numericMatchId);
-
-      setDisplayAccess(displayResponse);
     } catch (err) {
       setError(
         err instanceof Error
@@ -508,6 +503,24 @@ export default function MatchPreparation() {
       );
     } finally {
       setGeneratingOperatorAccess(false);
+    }
+  }
+
+  async function handleGenerateDisplayAccess() {
+    try {
+      setError("");
+      setCopiedDisplayAccess(false);
+
+      const response =
+        await generateScoreDisplayAccess(numericMatchId);
+
+      setDisplayAccess(response);
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to generate public score display link.",
+      );
     }
   }
 
@@ -1302,12 +1315,19 @@ export default function MatchPreparation() {
           </div>
 
           {!displayAccess ? (
-              <div className="mt-5">
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Generate Operator Access above to create the public display link.
-                </p>
-              </div>
-            ) : (
+            <div className="mt-5">
+              <Button
+                size="sm"
+                onClick={() => void handleGenerateDisplayAccess()}
+              >
+                Generate Public Display Link
+              </Button>
+
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                Generate this link once and share it with viewers on any number of devices.
+              </p>
+            </div>
+          ) : (
             <div className="mt-5 space-y-4">
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -1344,8 +1364,7 @@ export default function MatchPreparation() {
               </div>
 
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                Expires:{" "}
-                {new Date(displayAccess.expiresAt).toLocaleString()}
+                This public link remains active until it is explicitly revoked.
               </p>
 
               <div className="flex justify-end">
