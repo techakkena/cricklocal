@@ -32,7 +32,7 @@ public class ScoreDisplayAccessService {
     @Transactional
     public GeneratedDisplayAccess generateAccess(Long matchId) {
 
-        Match match = matchRepository.findById(matchId)
+        Match match = matchRepository.findByIdForUpdate(matchId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Match not found"));
 
