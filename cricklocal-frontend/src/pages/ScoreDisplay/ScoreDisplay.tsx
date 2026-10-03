@@ -572,6 +572,13 @@ export default function ScoreDisplay() {
         {/* Current Players */}
         {liveInnings && (
           <section className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="md:col-span-3">
+              <p
+                className={`text-xs font-semibold uppercase tracking-widest ${secondaryText}`}
+              >
+                Batting — {liveInnings.battingTeamName}
+              </p>
+            </div>
 
             {/* Striker */}
             <div
@@ -723,6 +730,13 @@ export default function ScoreDisplay() {
                     );
                   })()
                 )}
+            </div>
+            <div className="md:col-span-3">
+              <p
+                className={`text-xs font-semibold uppercase tracking-widest ${secondaryText}`}
+              >
+                Bowling — {liveInnings.bowlingTeamName}
+              </p>
             </div>
 
             {/* Current Bowler */}
