@@ -962,31 +962,24 @@ public class DeliveryService {
                                         "Innings state not found"));
 
         // --------------------------------------------------
-        // Validate dismissal position
+        // Validate dismissal end
         // --------------------------------------------------
+        //
+        // For a RUN_OUT, the dismissed player and the end where
+        // the wicket was broken are independent.
+        //
+        // Examples:
+        //   Striker       -> Striker End
+        //   Striker       -> Non-Striker End
+        //   Non-Striker   -> Striker End
+        //   Non-Striker   -> Non-Striker End
+        //
+        // Do NOT require the dismissed player's current role
+        // to match the dismissal end.
 
-        if (request.getDismissalEnd()
-                == DismissalEnd.STRIKER) {
-
-                if (state.getStriker() == null
-                        || !state.getStriker().getId()
-                        .equals(dismissedPlayer.getId())) {
-
-                throw new IllegalArgumentException(
-                        "Dismissed player is not the current striker");
-                }
-        }
-
-        if (request.getDismissalEnd()
-                == DismissalEnd.NON_STRIKER) {
-
-                if (state.getNonStriker() == null
-                        || !state.getNonStriker().getId()
-                        .equals(dismissedPlayer.getId())) {
-
-                throw new IllegalArgumentException(
-                        "Dismissed player is not the current non-striker");
-                }
+        if (request.getDismissalEnd() == null) {
+        throw new IllegalArgumentException(
+                "Dismissal end is required for a wicket");
         }
 
         // --------------------------------------------------
