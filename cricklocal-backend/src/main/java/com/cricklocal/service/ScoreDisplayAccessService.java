@@ -10,13 +10,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 
 @Service
 public class ScoreDisplayAccessService {
 
     private static final int TOKEN_BYTES = 32;
-    private static final long ACCESS_DURATION_DAYS = 7;
 
     private final ScoreDisplayAccessRepository accessRepository;
     private final MatchRepository matchRepository;
@@ -38,25 +36,45 @@ public class ScoreDisplayAccessService {
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Match not found"));
 
-        accessRepository.findFirstByMatchAndActiveTrue(match)
-                .ifPresent(existing -> {
-                    existing.setActive(false);
-                    existing.setRevokedAt(Instant.now());
-                    accessRepository.save(existing);
-                });
+        /*
+         * PUBLIC SCORE DISPLAY LINK RULE:
+         *
+         * One match gets one public display link.
+         *
+         * If an active link already exists, return it.
+         * Do NOT revoke it.
+         * Do NOT generate a new token.
+         */
+        var existing = accessRepository
+                .findFirstByMatchAndActiveTrue(match)
+                .orElse(null);
 
+        if (existing != null) {
+            return new GeneratedDisplayAccess(
+                    existing.getDisplayToken(),
+                    existing.getExpiresAt()
+            );
+        }
+
+        /*
+         * No active public link exists.
+         *
+         * Create the public link for this match.
+         */
         String displayToken = generateToken();
 
         ScoreDisplayAccess access = new ScoreDisplayAccess();
         access.setMatch(match);
         access.setDisplayToken(displayToken);
         access.setActive(true);
-        access.setExpiresAt(
-                Instant.now().plus(
-                        ACCESS_DURATION_DAYS,
-                        ChronoUnit.DAYS
-                )
-        );
+
+        /*
+         * Public score display link does not expire automatically.
+         *
+         * It remains valid until the administrator explicitly
+         * revokes the public display link.
+         */
+        access.setExpiresAt(null);
 
         ScoreDisplayAccess saved = accessRepository.save(access);
 
@@ -83,8 +101,15 @@ public class ScoreDisplayAccessService {
                                 "Invalid or inactive display link"
                         ));
 
+        /*
+         * expiresAt is currently null for public score display links.
+         *
+         * Keep this check for future compatibility if an expiry
+         * policy is introduced later.
+         */
         if (access.getExpiresAt() != null
-                && access.getExpiresAt().isBefore(Instant.now())) {
+                && !access.getExpiresAt().isAfter(Instant.now())) {
+
             throw new IllegalArgumentException(
                     "Display link has expired"
             );
