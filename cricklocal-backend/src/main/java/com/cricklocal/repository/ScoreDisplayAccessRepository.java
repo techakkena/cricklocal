@@ -12,6 +12,7 @@ public interface ScoreDisplayAccessRepository
     Optional<ScoreDisplayAccess>
     findByDisplayTokenAndActiveTrue(String displayToken);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<ScoreDisplayAccess>
     findFirstByMatchAndActiveTrue(Match match);
 }
