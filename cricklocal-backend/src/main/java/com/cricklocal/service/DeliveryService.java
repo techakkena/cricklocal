@@ -963,31 +963,31 @@ public class DeliveryService {
                                         "Innings state not found"));
 
         // --------------------------------------------------
-        // Validate dismissal position
+        // Validate dismissal end
         // --------------------------------------------------
-
-        if (request.getDismissalEnd()
-                == DismissalEnd.STRIKER) {
-
-                if (state.getStriker() == null
-                        || !state.getStriker().getId()
-                        .equals(dismissedPlayer.getId())) {
-
+        // The dismissed batter and the physical dismissal end are
+        // independent for a run-out. A batter may be run out at the
+        // opposite end after the batters have crossed.
+        if (request.getDismissalEnd() == null) {
                 throw new IllegalArgumentException(
-                        "Dismissed player is not the current striker");
-                }
+                        "Dismissal end is required");
         }
 
-        if (request.getDismissalEnd()
-                == DismissalEnd.NON_STRIKER) {
-
-                if (state.getNonStriker() == null
-                        || !state.getNonStriker().getId()
-                        .equals(dismissedPlayer.getId())) {
-
+        if (state.getStriker() == null
+                || state.getNonStriker() == null) {
                 throw new IllegalArgumentException(
-                        "Dismissed player is not the current non-striker");
-                }
+                        "Current batting state is incomplete");
+        }
+
+        boolean dismissedIsStriker =
+                state.getStriker().getId().equals(dismissedPlayer.getId());
+
+        boolean dismissedIsNonStriker =
+                state.getNonStriker().getId().equals(dismissedPlayer.getId());
+
+        if (!dismissedIsStriker && !dismissedIsNonStriker) {
+                throw new IllegalArgumentException(
+                        "Dismissed player is not a current batter");
         }
 
         // --------------------------------------------------
