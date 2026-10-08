@@ -6,6 +6,7 @@ import {
   getMatchInnings,
   getMatchScorecard,
   getMatchLineup,
+  getInningsDeliveries,
   startMatchInnings,
 } from "../api/matchesApi";
 
@@ -42,8 +43,6 @@ export default function ScoreOperator() {
   const [deliveries, setDeliveries] =
   useState<DeliveryResponse[]>([]);
 
-  const [lastKnownOver, setLastKnownOver] =
-    useState<number | null>(null);
   const [needsNextBowler, setNeedsNextBowler] =
     useState(false);
   const [matchLineup, setMatchLineup] =
@@ -153,16 +152,21 @@ export default function ScoreOperator() {
         getDeliveries(inningsId),
       ]);
 
-      const state = await getInningsState(inningsId);
+      const state = updatedState;
 
-      if (lastKnownOver === null) {
-        setLastKnownOver(state.currentOver);
-      } else if (state.currentOver > lastKnownOver) {
-        setNeedsNextBowler(true);
-        setLastKnownOver(state.currentOver);
-      }
+      const lastDelivery =
+        updatedDeliveries.length > 0
+          ? updatedDeliveries[updatedDeliveries.length - 1]
+          : null;
 
-      setInningsStateData(state);
+      const overWaitingForBowler =
+        state.currentOver > 1 &&
+        state.legalBallsInOver === 0 &&
+        lastDelivery?.overNumber === state.currentOver - 1 &&
+        lastDelivery?.bowlerId === state.currentBowlerId;
+
+        setNeedsNextBowler(overWaitingForBowler);
+        setInningsStateData(state);
 
       const updatedLiveInnings =
         updatedInnings.find(
@@ -230,8 +234,27 @@ export default function ScoreOperator() {
 
         if (liveInnings) {
           try {
-            const state = await getInningsState(liveInnings.id);
-            setInningsStateData(state);
+            const [
+              state,
+              initialDeliveries,
+            ] = await Promise.all([
+              getInningsState(liveInnings.id),
+              getInningsDeliveries(liveInnings.id),
+            ]);
+
+            const lastDelivery =
+              initialDeliveries.length > 0
+                ? initialDeliveries[initialDeliveries.length - 1]
+                : null;
+
+            const overWaitingForBowler =
+              state.currentOver > 1 &&
+              state.legalBallsInOver === 0 &&
+              lastDelivery?.overNumber === state.currentOver - 1 &&
+              lastDelivery?.bowlerId === state.currentBowlerId;
+
+              setNeedsNextBowler(overWaitingForBowler);
+              setInningsStateData(state);
           } catch (err) {
             const message =
               err instanceof Error ? err.message : "";
@@ -243,7 +266,6 @@ export default function ScoreOperator() {
               // Newly started innings does not have state yet.
               // The user must initialize striker, non-striker and bowler.
               setInningsStateData(null);
-              setLastKnownOver(null);
               setNeedsNextBowler(false);
             } else {
               throw err;
@@ -559,7 +581,6 @@ const handleWicket = async () => {
         );
 
         setInningsStateData(initializedState);
-        setLastKnownOver(initializedState.currentOver);
         setNeedsNextBowler(false);
 
         setSelectedOpeningStrikerId(null);

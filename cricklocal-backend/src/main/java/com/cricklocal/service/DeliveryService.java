@@ -717,6 +717,7 @@ public class DeliveryService {
                                 state.getCurrentOver() - 1);
 
                         state.setLegalBallsInOver(5);
+                        state.setCurrentBowler(delivery.getBowler());
 
                         Player striker = state.getStriker();
 
@@ -1328,25 +1329,33 @@ public class DeliveryService {
         }
         }
 
+        // For a run out, dismissalEnd explicitly identifies the end
+        // where the wicket occurred. The replacement batter has already
+        // been placed at that end, so do not apply another automatic
+        // strike rotation.
+        if (Boolean.TRUE.equals(delivery.getWicket())
+                && delivery.getWicketType() == WicketType.RUN_OUT) {
+
+        // No additional strike rotation.
+
+        } else {
+
         // Odd number of completed runs means the batters change ends.
         // For Bye and Leg Bye, runsOffBat is 0, so include extraRuns.
-        // Wide/No Ball extra runs are intentionally excluded here because
-        // they do not represent completed runs by the batters in the same way.
         int runsForStrikeRotation = delivery.getRunsOffBat();
 
         if (delivery.getExtraType() == ExtraType.BYE
                 || delivery.getExtraType() == ExtraType.LEG_BYE) {
-        runsForStrikeRotation += delivery.getExtraRuns();
+                runsForStrikeRotation += delivery.getExtraRuns();
         }
 
         if (runsForStrikeRotation % 2 != 0) {
 
-        Player striker = state.getStriker();
+                Player striker = state.getStriker();
 
-        state.setStriker(
-                state.getNonStriker());
-
-        state.setNonStriker(striker);
+                state.setStriker(state.getNonStriker());
+                state.setNonStriker(striker);
+        }
         }
 
         // Only legal deliveries count toward the six-ball over.
