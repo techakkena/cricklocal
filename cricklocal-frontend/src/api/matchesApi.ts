@@ -1,6 +1,7 @@
 import { apiDelete, apiGet, apiPost } from "./apiClient";
 import type {
   AddPlayerToMatchRequest,
+  ReplaceMatchPlayerRequest,
   InningsResponse,
   MatchLineupResponse,
   MatchResponse,
@@ -220,6 +221,17 @@ export function addPlayerToMatch(
 ): Promise<MatchLineupResponse> {
   return apiPost<MatchLineupResponse>(
     `/api/matches/${matchId}/lineup`,
+    request,
+  );
+}
+
+export function replaceMatchPlayer(
+  matchId: number,
+  teamId: number,
+  request: ReplaceMatchPlayerRequest,
+): Promise<MatchLineupResponse> {
+  return apiPost<MatchLineupResponse>(
+    `/api/matches/${matchId}/lineup/team/${teamId}/replace`,
     request,
   );
 }

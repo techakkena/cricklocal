@@ -1,5 +1,8 @@
 package com.cricklocal.service;
 
+import com.cricklocal.repository.DeliveryRepository;
+import com.cricklocal.repository.InningsRepository;
+import com.cricklocal.dto.ReplaceMatchPlayerRequest;
 import com.cricklocal.dto.AddPlayerToMatchRequest;
 import com.cricklocal.dto.MatchLineupResponse;
 import com.cricklocal.dto.PlayingXIResponse;
@@ -9,6 +12,7 @@ import com.cricklocal.entity.PlayingXI;
 import com.cricklocal.entity.Player;
 import com.cricklocal.entity.Team;
 import com.cricklocal.entity.TeamPlayer;
+import com.cricklocal.entity.Innings;
 import com.cricklocal.exception.ResourceNotFoundException;
 import com.cricklocal.repository.MatchLineupRepository;
 import com.cricklocal.repository.MatchRepository;
@@ -32,6 +36,9 @@ public class MatchLineupService {
     private final TeamPlayerRepository teamPlayerRepository;
     private final MatchLineupRepository matchLineupRepository;
     private final PlayingXIRepository playingXIRepository;
+    private final DeliveryRepository deliveryRepository;
+    private final InningsRepository inningsRepository;
+
 
     public MatchLineupService(
             MatchRepository matchRepository,
@@ -40,7 +47,9 @@ public class MatchLineupService {
             MatchTeamRepository matchTeamRepository,
             TeamPlayerRepository teamPlayerRepository,
             MatchLineupRepository matchLineupRepository,
-            PlayingXIRepository playingXIRepository) {
+            PlayingXIRepository playingXIRepository,
+            DeliveryRepository deliveryRepository,
+            InningsRepository inningsRepository) {
 
         this.matchRepository = matchRepository;
         this.teamRepository = teamRepository;
@@ -49,6 +58,8 @@ public class MatchLineupService {
         this.teamPlayerRepository = teamPlayerRepository;
         this.matchLineupRepository = matchLineupRepository;
         this.playingXIRepository = playingXIRepository;
+        this.deliveryRepository = deliveryRepository;
+        this.inningsRepository = inningsRepository;
     }
 
     @Transactional
@@ -124,7 +135,7 @@ public class MatchLineupService {
 
         boolean isNewLineup = lineup == null;
 
-        // 5. Maximum 11 PLAYING players.
+        // 5. Maximum PLAYING players based on the match configuration.
         long currentPlayingPlayers =
                 matchLineupRepository.findByMatchAndTeam(match, team)
                         .stream()
@@ -133,26 +144,28 @@ public class MatchLineupService {
 
         if (isNewLineup
                 && Boolean.TRUE.equals(request.getPlaying())
-                && currentPlayingPlayers >= 11) {
-                throw new IllegalArgumentException(
-                        "A Playing XI can contain only 11 players");
+                && currentPlayingPlayers >= match.getMaxPlayersPerTeam()) {
+        throw new IllegalArgumentException(
+                "A Playing XI can contain only "
+                        + match.getMaxPlayersPerTeam()
+                        + " players");
         }
 
         // 6. A player being made Captain/WK must be playing.
         if ((Boolean.TRUE.equals(request.getCaptain())
                 || Boolean.TRUE.equals(request.getWicketKeeper()))
                 && !Boolean.TRUE.equals(request.getPlaying())) {
-                throw new IllegalArgumentException(
-                        "Captain and wicketkeeper must be part of the Playing XI");
+        throw new IllegalArgumentException(
+                "Captain and wicketkeeper must be part of the Playing XI");
         }
 
         // Create the row only when the player has never been added.
         if (isNewLineup) {
-                lineup = new MatchLineup();
-                lineup.setMatch(match);
-                lineup.setTeam(team);
-                lineup.setPlayer(player);
-                lineup.setJerseyNumber(teamPlayer.getJerseyNumber());
+        lineup = new MatchLineup();
+        lineup.setMatch(match);
+        lineup.setTeam(team);
+        lineup.setPlayer(player);
+        lineup.setJerseyNumber(teamPlayer.getJerseyNumber());
         }
 
         // 7. Apply the player's new state.
@@ -201,6 +214,146 @@ public class MatchLineupService {
 
         MatchLineup savedLineup =
                 matchLineupRepository.save(lineup);
+
+        return toResponse(savedLineup);
+    }
+
+    @Transactional
+    public MatchLineupResponse replacePlayer(
+                        Long matchId,
+                        Long teamId,
+                        ReplaceMatchPlayerRequest request) {
+
+                Match match = matchRepository.findById(matchId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Match not found"));
+
+                Team team = teamRepository.findById(teamId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Team not found"));
+
+                if (matchTeamRepository.findByMatchAndTeam(match, team).isEmpty()) {
+                        throw new IllegalArgumentException(
+                                "Team does not belong to this match");
+                }
+
+                // Replacement is only possible after the Playing XI
+                // has been finalized.
+                if (!playingXIRepository.existsByMatchAndTeam(match, team)) {
+                        throw new IllegalArgumentException(
+                                "Playing XI must be finalized before replacing a player");
+                }
+
+                if (request.getOutPlayerId().equals(request.getInPlayerId())) {
+                        throw new IllegalArgumentException(
+                                "Outgoing and incoming players must be different");
+                }
+
+                Player outPlayer = playerRepository.findById(
+                        request.getOutPlayerId())
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Outgoing player not found"));
+
+                Player inPlayer = playerRepository.findById(
+                        request.getInPlayerId())
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Incoming player not found"));
+
+                // Outgoing player must currently be part of this team's
+                // finalized Playing XI.
+                MatchLineup outgoingLineup =
+                        matchLineupRepository.findByMatchAndTeam(match, team)
+                                .stream()
+                                .filter(lineup ->
+                                        Boolean.TRUE.equals(lineup.getPlaying())
+                                                && lineup.getPlayer().getId()
+                                                .equals(outPlayer.getId()))
+                                .findFirst()
+                                .orElseThrow(() ->
+                                        new IllegalArgumentException(
+                                                "Outgoing player is not in this team's Playing XI"));
+
+                // Incoming player must belong to the same team.
+                TeamPlayer incomingTeamPlayer =
+                        teamPlayerRepository.findByTeamAndPlayer(team, inPlayer)
+                                .orElseThrow(() ->
+                                        new IllegalArgumentException(
+                                                "Incoming player does not belong to this team"));
+
+                // Incoming player must be active.
+                if (!Boolean.TRUE.equals(incomingTeamPlayer.getActive())) {
+                        throw new IllegalArgumentException(
+                                "Incoming player is inactive for this team");
+                }
+
+                // Incoming player cannot already be selected anywhere in this match.
+                if (matchLineupRepository.existsByMatchAndPlayer(match,inPlayer)) {
+                        throw new IllegalArgumentException(
+                                "Incoming player is already part of this match lineup");
+                }
+
+                // A player who has already participated as a batter or bowler
+                // in this match cannot be replaced.
+                List<Innings> matchInnings =
+                        inningsRepository.findByMatchOrderByInningsNumberAsc(match);
+
+                boolean hasBatted = matchInnings.stream()
+                        .anyMatch(innings ->
+                                !deliveryRepository.findByInningsAndBatter(
+                                        innings,
+                                        outPlayer)
+                                        .isEmpty());
+
+                if (hasBatted) {
+                        throw new IllegalArgumentException(
+                                "Player cannot be replaced because they have already batted");
+                }
+
+                boolean hasBowled = matchInnings.stream()
+                        .anyMatch(innings ->
+                                !deliveryRepository.findByInningsAndBowler(
+                                        innings,
+                                        outPlayer)
+                                        .isEmpty());
+
+                if (hasBowled) {
+                        throw new IllegalArgumentException(
+                                "Player cannot be replaced because they have already bowled");
+                }
+
+                // The incoming player must not have a finalized Playing XI
+                // conflict at the same scheduled time.
+                if (match.getScheduledAt() != null
+                        && matchLineupRepository.existsFinalizedScheduleConflict(
+                                inPlayer,
+                                match,
+                                match.getScheduledAt())) {
+
+                        throw new IllegalArgumentException(
+                                "Incoming player has a finalized Playing XI conflict at the same scheduled time: "
+                                        + inPlayer.getDisplayName());
+                }
+
+                /*
+                * Replace only the player reference.
+                *
+                * Keep:
+                * - lineup row
+                * - jersey number
+                * - captain status
+                * - wicket keeper status
+                * - playing status
+                *
+                * This keeps the configured Playing XI size unchanged.
+                */
+                outgoingLineup.setPlayer(inPlayer);
+
+                MatchLineup savedLineup =
+                        matchLineupRepository.save(outgoingLineup);
 
         return toResponse(savedLineup);
     }
@@ -311,9 +464,11 @@ public class MatchLineupService {
                                 Boolean.TRUE.equals(lineup.getPlaying()))
                         .toList();
 
-        if (playingXI.size() != 11) {
-            throw new IllegalArgumentException(
-                    "Exactly 11 players must be selected for the Playing XI");
+        if (playingXI.size() != match.getMaxPlayersPerTeam()) {
+        throw new IllegalArgumentException(
+                "Exactly "
+                        + match.getMaxPlayersPerTeam()
+                        + " players must be selected for the Playing XI");
         }
 
         MatchLineup captain =
@@ -332,7 +487,7 @@ public class MatchLineupService {
                 .orElseThrow(() ->
                         new IllegalArgumentException(
                                 "Wicket Keeper must be part of the Playing XI"));
-                                        
+
         for (MatchLineup lineup : playingXI) {
 
             TeamPlayer teamPlayer =

@@ -8,6 +8,7 @@ import {
   addPlayerToMatch,
   finalizePlayingXI,
   getFinalizedPlayingXI,
+  replaceMatchPlayer,
   getMatchById,
   getMatchLineup,
   getMatchInnings,
@@ -61,6 +62,9 @@ export default function MatchPreparation() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [savingPlayer, setSavingPlayer] = useState<number | null>(null);
+  const [replacementOut, setReplacementOut] = useState<Record<number, number | "">>({});
+  const [replacementIn, setReplacementIn] = useState<Record<number, number | "">>({});
+  const [replacingTeam, setReplacingTeam] = useState<number | null>(null);
   const [finalizingTeam, setFinalizingTeam] = useState<number | null>(null);
   const [toss, setToss] = useState<TossResponse | null>(null);
   const [tossWinnerId, setTossWinnerId] = useState<number | "">("");
@@ -236,8 +240,15 @@ export default function MatchPreparation() {
       (item) => item.playing,
     ).length;
 
-    if (playing && currentCount >= 11) {
-      setError("A Playing XI can contain only 11 players.");
+    if (
+      playing &&
+      currentCount >= (match?.maxPlayersPerTeam ?? 11)
+    ) {
+      setError(
+        `A Playing XI can contain only ${
+          match?.maxPlayersPerTeam ?? 11
+        } players.`
+      );
       return;
     }
 
@@ -399,8 +410,12 @@ export default function MatchPreparation() {
       (item) => item.playing,
     );
 
-    if (teamLineup.length !== 11) {
-      setError("Exactly 11 players are required before finalizing.");
+    if (teamLineup.length !== (match?.maxPlayersPerTeam ?? 11)) {
+      setError(
+        `Exactly ${
+          match?.maxPlayersPerTeam ?? 11
+        } players are required before finalizing.`
+      );
       return;
     }
 
@@ -412,14 +427,22 @@ export default function MatchPreparation() {
     }
 
     if (!teamLineup.some((item) => item.playerId === captainId)) {
-      setError("Captain must be one of the 11 playing players.");
+      setError(
+        `Captain must be one of the ${
+          match?.maxPlayersPerTeam ?? 11
+        } playing players.`
+      );
       return;
     }
 
     const wicketKeeperId = wicketKeepers[teamId];
 
     if (!wicketKeeperId) {
-      setError("Please select a wicket keeper before finalizing.");
+      setError(
+        `Wicket Keeper must be one of the ${
+          match?.maxPlayersPerTeam ?? 11
+        } playing players.`
+      );
       return;
     }
 
@@ -455,6 +478,73 @@ export default function MatchPreparation() {
       );
     } finally {
       setFinalizingTeam(null);
+    }
+  }
+
+  async function handleReplacePlayer(teamId: number) {
+    const outPlayerId = replacementOut[teamId];
+    const inPlayerId = replacementIn[teamId];
+
+    if (!outPlayerId || !inPlayerId) {
+      setError("Please select both the outgoing and incoming players.");
+      return;
+    }
+
+    try {
+      setReplacingTeam(teamId);
+      setError("");
+
+      const response = await replaceMatchPlayer(
+        numericMatchId,
+        teamId,
+        {
+          outPlayerId: Number(outPlayerId),
+          inPlayerId: Number(inPlayerId),
+        },
+      );
+
+      setLineup((current) =>
+        current.map((item) =>
+          item.teamId === teamId &&
+          item.playerId === Number(outPlayerId)
+            ? response
+            : item,
+        ),
+      );
+
+      setCaptains((current) => ({
+        ...current,
+        [teamId]:
+          current[teamId] === Number(outPlayerId)
+            ? response.playerId
+            : current[teamId],
+      }));
+
+      setWicketKeepers((current) => ({
+        ...current,
+        [teamId]:
+          current[teamId] === Number(outPlayerId)
+            ? response.playerId
+            : current[teamId],
+      }));
+
+      setReplacementOut((current) => ({
+        ...current,
+        [teamId]: "",
+      }));
+
+      setReplacementIn((current) => ({
+        ...current,
+        [teamId]: "",
+      }));
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Unable to replace the player.",
+      );
+    } finally {
+      setReplacingTeam(null);
     }
   }
 
@@ -739,8 +829,8 @@ export default function MatchPreparation() {
                     color={isFinalized ? "success" : "warning"}
                   >
                     {isFinalized
-                      ? "XI Finalized"
-                      : `${count} / 11`}
+                    ? "XI Finalized"
+                    : `${count} / ${match?.maxPlayersPerTeam ?? 11}`}
                   </Badge>
                 </div>
               </div>
@@ -771,7 +861,7 @@ export default function MatchPreparation() {
                       </h4>
 
                       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        Select Playing XI
+                        Select Playing Players
                       </p>
                     </div>
 
@@ -780,14 +870,14 @@ export default function MatchPreparation() {
                       color={
                         isFinalized
                           ? "success"
-                          : playingCount === 11
+                          : playingCount === (match?.maxPlayersPerTeam ?? 11)
                             ? "info"
                             : "warning"
                       }
                     >
                       {isFinalized
-                        ? "Finalized"
-                        : `${playingCount} / 11`}
+                      ? "Finalized"
+                      : `${playingCount} / ${match?.maxPlayersPerTeam ?? 11}`}
                     </Badge>
                   </div>
                 </div>
@@ -953,7 +1043,7 @@ export default function MatchPreparation() {
                     disabled={
                       isFinalized ||
                       finalizingTeam === team.teamId ||
-                      playingCount !== 11 ||
+                       playingCount !== (match?.maxPlayersPerTeam ?? 11) ||
                       !captains[team.teamId] ||
                       !wicketKeepers[team.teamId]
                     }
@@ -968,6 +1058,95 @@ export default function MatchPreparation() {
                         ? "Finalizing..."
                         : "Finalize Playing XI"}
                   </button>
+                      {isFinalized && (
+                      <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+                        <div className="mb-3">
+                          <h5 className="text-sm font-semibold text-gray-800 dark:text-white/90">
+                            Replace Player
+                          </h5>
+                          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Replace a finalized player with another active player
+                            from this team&apos;s squad.
+                          </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <select
+                            value={replacementOut[team.teamId] ?? ""}
+                            onChange={(event) =>
+                              setReplacementOut((current) => ({
+                                ...current,
+                                [team.teamId]: event.target.value
+                                  ? Number(event.target.value)
+                                  : "",
+                              }))
+                            }
+                            className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                          >
+                            <option value="">Select player to replace</option>
+
+                            {teamLineup
+                              .filter((item) => item.playing)
+                              .map((item) => (
+                                <option
+                                  key={item.playerId}
+                                  value={item.playerId}
+                                >
+                                  {item.playerName}
+                                </option>
+                              ))}
+                          </select>
+
+                          <select
+                            value={replacementIn[team.teamId] ?? ""}
+                            onChange={(event) =>
+                              setReplacementIn((current) => ({
+                                ...current,
+                                [team.teamId]: event.target.value
+                                  ? Number(event.target.value)
+                                  : "",
+                              }))
+                            }
+                            className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 outline-none focus:border-brand-300 focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                          >
+                            <option value="">Select replacement player</option>
+
+                            {getTeamPlayers(team.teamId)
+                              .filter(
+                                (player) =>
+                                  !isPlaying(team.teamId, player.id),
+                              )
+                              .map((player) => (
+                                <option key={player.id} value={player.id}>
+                                  {player.displayName}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={
+                            replacingTeam === team.teamId ||
+                            !replacementOut[team.teamId] ||
+                            !replacementIn[team.teamId]
+                          }
+                          onClick={() =>
+                            void handleReplacePlayer(team.teamId)
+                          }
+                          className="mt-3 inline-flex h-10 w-full items-center justify-center rounded-lg border border-brand-500 px-4 text-sm font-medium text-brand-500 transition hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-brand-500/10"
+                        >
+                          {replacingTeam === team.teamId
+                            ? "Replacing..."
+                            : "Replace Player"}
+                        </button>
+
+                        <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                          A player who has already batted or bowled cannot be
+                          replaced.
+                        </p>
+                      </div>
+                    )}
                 </div>
               </div>
             );

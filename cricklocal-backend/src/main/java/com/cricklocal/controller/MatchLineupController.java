@@ -3,6 +3,7 @@ package com.cricklocal.controller;
 import com.cricklocal.dto.AddPlayerToMatchRequest;
 import com.cricklocal.dto.MatchLineupResponse;
 import com.cricklocal.dto.PlayingXIResponse;
+import com.cricklocal.dto.ReplaceMatchPlayerRequest;
 import com.cricklocal.service.MatchLineupService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -71,5 +72,17 @@ public class MatchLineupController {
                 matchId,
                 teamId
         );
+    }
+
+    @PostMapping("/{matchId}/lineup/team/{teamId}/replace")
+    public MatchLineupResponse replacePlayer(
+            @PathVariable Long matchId,
+            @PathVariable Long teamId,
+            @Valid @RequestBody ReplaceMatchPlayerRequest request) {
+
+        return matchLineupService.replacePlayer(
+                matchId,
+                teamId,
+                request);
     }
 }

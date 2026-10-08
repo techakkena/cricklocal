@@ -262,6 +262,11 @@ export interface AddPlayerToMatchRequest {
   wicketKeeper: boolean;
 }
 
+export interface ReplaceMatchPlayerRequest {
+  outPlayerId: number;
+  inPlayerId: number;
+}
+
 export type ExtraType =
   | "NONE"
   | "WIDE"

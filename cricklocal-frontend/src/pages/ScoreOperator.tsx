@@ -660,9 +660,15 @@ const handleWicket = async () => {
     remainingLegalBalls % 6
   }`;
 
+  const maxWickets = Math.max(
+    0,
+    (match.maxPlayersPerTeam ?? 11) - 1,
+  );
+
   const remainingWickets = Math.max(
     0,
-    10 - (battingInnings?.wickets ?? innings?.wickets ?? 0),
+    maxWickets -
+      (battingInnings?.wickets ?? innings?.wickets ?? 0),
   );
 
   const firstInningsScore =
