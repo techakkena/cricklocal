@@ -179,7 +179,7 @@ public class DeliveryService {
                                 .orElseThrow(() ->
                                         new IllegalArgumentException(
                                                 "Batter is not in the match lineup"));
-                
+
                 // 12. Verify non-striker is in the match lineup
                 MatchLineup nonStrikerLineup =
                                 matchLineupRepository
@@ -202,7 +202,7 @@ public class DeliveryService {
                 if (!nonStrikerLineup.getPlaying()) {
                 throw new IllegalArgumentException(
                         "Non-striker is not in the playing XI");
-                }                                
+                }
 
 
                 // 13. Verify bowler is in the match lineup
@@ -523,6 +523,7 @@ public class DeliveryService {
                                 });
                 }
                 undoBattingStatistics(innings, lastDelivery);
+                undoPartnership(innings, lastDelivery);
                 undoInningsState(innings, lastDelivery);
                 undoBowlingStatistics(innings, lastDelivery);
                 fallOfWicketRepository.deleteByDelivery(lastDelivery);
@@ -698,72 +699,55 @@ public class DeliveryService {
    }
 
    private void undoInningsState(
-                        Innings innings,
-                        Delivery delivery) {
+                Innings innings,
+                Delivery delivery) {
 
-                InningsState state =
-                        inningsStateRepository
-                                .findByInnings(innings)
-                                .orElseThrow(() ->
-                                        new ResourceNotFoundException(
-                                                "Innings state not found"));
+        InningsState state =
+                inningsStateRepository
+                        .findByInnings(innings)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException(
+                                        "Innings state not found"));
 
-                // Reverse the end-of-over transition first.
-                if (delivery.getLegalDelivery()
-                        && state.getLegalBallsInOver() == 0
-                        && state.getCurrentOver() > 1) {
+        /*
+        * A Delivery stores the striker, non-striker and bowler
+        * that were in position BEFORE this delivery was recorded.
+        *
+        * Therefore undo should restore those exact players instead
+        * of trying to reverse rotations manually.
+        */
+        state.setStriker(
+                delivery.getBatter());
 
-                        state.setCurrentOver(
-                                state.getCurrentOver() - 1);
+        state.setNonStriker(
+                delivery.getNonStriker());
 
-                        state.setLegalBallsInOver(5);
-                        state.setCurrentBowler(delivery.getBowler());
+        state.setCurrentBowler(
+                delivery.getBowler());
 
-                        Player striker = state.getStriker();
+        /*
+        * Restore the exact over and legal-ball position that existed
+        * before this delivery.
+        *
+        * ballInOver is 1-based:
+        *
+        *   1.1 -> 0 legal balls before delivery
+        *   1.2 -> 1 legal ball before delivery
+        *   ...
+        *   1.6 -> 5 legal balls before delivery
+        *
+        * This also works for illegal deliveries because ballInOver
+        * is calculated from the legal-ball count.
+        */
+        state.setCurrentOver(
+                delivery.getOverNumber());
 
-                        state.setStriker(
-                                state.getNonStriker());
+        state.setLegalBallsInOver(
+                Math.max(
+                        0,
+                        delivery.getBallInOver() - 1));
 
-                        state.setNonStriker(striker);
-                } else if (delivery.getLegalDelivery()) {
-
-                        state.setLegalBallsInOver(
-                                Math.max(
-                                        0,
-                                        state.getLegalBallsInOver() - 1));
-                }
-
-                // Reverse the odd-runs batter exchange.
-                if (delivery.getRunsOffBat() % 2 != 0) {
-
-                        Player striker = state.getStriker();
-
-                        state.setStriker(
-                                state.getNonStriker());
-
-                        state.setNonStriker(striker);
-                }
-
-                // Reverse wicket replacement.
-                if (Boolean.TRUE.equals(delivery.getWicket())
-                        && delivery.getDismissedPlayer() != null) {
-
-                        DismissalEnd dismissalEnd =
-                                delivery.getDismissalEnd();
-
-                        if (dismissalEnd == DismissalEnd.STRIKER) {
-
-                        state.setStriker(
-                                delivery.getDismissedPlayer());
-
-                        } else if (dismissalEnd == DismissalEnd.NON_STRIKER) {
-
-                        state.setNonStriker(
-                                delivery.getDismissedPlayer());
-                        }
-                }
-
-                inningsStateRepository.save(state);
+        inningsStateRepository.save(state);
    }
 
    private void validateExtras(
@@ -1303,88 +1287,99 @@ public class DeliveryService {
         return response;
     }
 
+
     private void updateInningsStateAfterDelivery(
                 InningsState state,
                 Delivery delivery,
                 Player newBatter) {
 
-        // If a wicket falls, replace the dismissed batter
-        // at the correct end.
-        if (Boolean.TRUE.equals(delivery.getWicket())
-                && newBatter != null) {
+        boolean isWicket =
+                Boolean.TRUE.equals(delivery.getWicket());
 
-        Player dismissedPlayer =
-                delivery.getDismissedPlayer();
+        Player dismissedPlayer = delivery.getDismissedPlayer();
+        DismissalEnd dismissalEnd = delivery.getDismissalEnd();
 
-        DismissalEnd dismissalEnd =
-                delivery.getDismissalEnd();
+        // Handle wicket dismissal and replacement at the correct end.
+        if (isWicket && dismissedPlayer != null && dismissalEnd != null) {
 
-        if (dismissalEnd == DismissalEnd.STRIKER) {
+                boolean dismissedIsStriker =
+                        state.getStriker() != null
+                                && state.getStriker().getId()
+                                        .equals(dismissedPlayer.getId());
 
-                state.setStriker(newBatter);
+                boolean dismissedIsNonStriker =
+                        state.getNonStriker() != null
+                                && state.getNonStriker().getId()
+                                        .equals(dismissedPlayer.getId());
 
-        } else if (dismissalEnd == DismissalEnd.NON_STRIKER) {
-
-                state.setNonStriker(newBatter);
-        }
-        }
-
-        // For a run out, dismissalEnd explicitly identifies the end
-        // where the wicket occurred. The replacement batter has already
-        // been placed at that end, so do not apply another automatic
-        // strike rotation.
-        if (Boolean.TRUE.equals(delivery.getWicket())
-                && delivery.getWicketType() == WicketType.RUN_OUT) {
-
-        // No additional strike rotation.
-
-        } else {
-
-        // Odd number of completed runs means the batters change ends.
-        // For Bye and Leg Bye, runsOffBat is 0, so include extraRuns.
-        int runsForStrikeRotation = delivery.getRunsOffBat();
-
-        if (delivery.getExtraType() == ExtraType.BYE
-                || delivery.getExtraType() == ExtraType.LEG_BYE) {
-                runsForStrikeRotation += delivery.getExtraRuns();
-        }
-
-        if (runsForStrikeRotation % 2 != 0) {
+                // Reconcile the dismissed player's actual position with
+                // the end recorded for the dismissal.
+                if (dismissedIsStriker
+                        && dismissalEnd == DismissalEnd.NON_STRIKER) {
 
                 Player striker = state.getStriker();
-
                 state.setStriker(state.getNonStriker());
                 state.setNonStriker(striker);
-        }
+
+                } else if (dismissedIsNonStriker
+                        && dismissalEnd == DismissalEnd.STRIKER) {
+
+                Player striker = state.getStriker();
+                state.setStriker(state.getNonStriker());
+                state.setNonStriker(striker);
+                }
+
+                // Replace the dismissed player at the selected end.
+                if (dismissalEnd == DismissalEnd.STRIKER) {
+                state.setStriker(newBatter);
+                } else {
+                state.setNonStriker(newBatter);
+                }
         }
 
-        // Only legal deliveries count toward the six-ball over.
-        if (delivery.getLegalDelivery()) {
+        // A final wicket can have no replacement batter.
+        if (isWicket && newBatter == null && dismissalEnd != null) {
+                if (dismissalEnd == DismissalEnd.STRIKER) {
+                state.setStriker(null);
+                } else {
+                state.setNonStriker(null);
+                }
+        }
 
-                int legalBalls =
-                        state.getLegalBallsInOver() + 1;
+        // Rotate strike for completed runs, except for run-outs,
+        // where the dismissal-end reconciliation above handles positioning.
+        if (!(isWicket && delivery.getWicketType() == WicketType.RUN_OUT)) {
+
+                int runsForStrikeRotation = delivery.getRunsOffBat();
+
+                if (delivery.getExtraType() == ExtraType.BYE
+                        || delivery.getExtraType() == ExtraType.LEG_BYE) {
+                runsForStrikeRotation += delivery.getExtraRuns();
+                }
+
+                if (runsForStrikeRotation % 2 != 0) {
+                Player striker = state.getStriker();
+                state.setStriker(state.getNonStriker());
+                state.setNonStriker(striker);
+                }
+        }
+
+        // Only legal deliveries advance the over.
+        if (Boolean.TRUE.equals(delivery.getLegalDelivery())) {
+
+                int legalBalls = state.getLegalBallsInOver() + 1;
 
                 if (legalBalls == 6) {
-
                 state.setLegalBallsInOver(0);
+                state.setCurrentOver(state.getCurrentOver() + 1);
 
-                state.setCurrentOver(
-                        state.getCurrentOver() + 1);
-
-                // At the end of the over,
-                // the batters change ends.
-                Player striker =
-                        state.getStriker();
-
-                state.setStriker(
-                        state.getNonStriker());
-
+                // Batters change ends at the end of an over.
+                Player striker = state.getStriker();
+                state.setStriker(state.getNonStriker());
                 state.setNonStriker(striker);
 
                 } else {
-
-                state.setLegalBallsInOver(
-                        legalBalls);
+                state.setLegalBallsInOver(legalBalls);
                 }
         }
 
@@ -1447,6 +1442,87 @@ public class DeliveryService {
                 }
 
                 partnershipService.save(partnership);
+    }
+
+
+    private void undoPartnership(
+                Innings innings,
+                Delivery delivery) {
+
+        java.util.List<Partnership> partnerships =
+                partnershipService.getByInnings(innings);
+
+        if (partnerships.isEmpty()) {
+                return;
+        }
+
+        Partnership partnershipToRestore;
+
+        if (Boolean.TRUE.equals(delivery.getWicket())) {
+
+                Partnership activePartnership =
+                        partnershipService.getActivePartnership(innings);
+
+                /*
+                * A replacement partnership is initialized after a wicket.
+                * Its batters match the post-delivery innings state.
+                * Delete it only if it is the newest partnership and
+                * contains no runs or balls.
+                */
+                if (activePartnership != null
+                        && partnerships.size() > 1
+                        && activePartnership.getPartnershipNumber()
+                                .equals(
+                                        partnerships.get(partnerships.size() - 1)
+                                                .getPartnershipNumber())
+                        && activePartnership.getRuns() == 0
+                        && activePartnership.getBalls() == 0) {
+
+                partnershipService.delete(activePartnership);
+
+                partnerships =
+                        partnershipService.getByInnings(innings);
+                }
+
+                if (partnerships.isEmpty()) {
+                return;
+                }
+
+                partnershipToRestore =
+                        partnerships.get(partnerships.size() - 1);
+
+                // Restore exactly one active partnership after undoing a wicket.
+                for (Partnership partnership : partnerships) {
+                        partnership.setActive(
+                                partnership.getId().equals(partnershipToRestore.getId()));
+                }
+
+                partnerships.forEach(partnershipService::save);
+
+        } else {
+
+                partnershipToRestore =
+                        partnershipService.getActivePartnership(innings);
+
+                if (partnershipToRestore == null) {
+                return;
+                }
+        }
+
+        partnershipToRestore.setRuns(
+                Math.max(
+                        0,
+                        partnershipToRestore.getRuns()
+                                - delivery.getTotalRuns()));
+
+        if (Boolean.TRUE.equals(delivery.getLegalDelivery())) {
+                partnershipToRestore.setBalls(
+                        Math.max(
+                                0,
+                                partnershipToRestore.getBalls() - 1));
+        }
+
+        partnershipService.save(partnershipToRestore);
     }
 
     private void initializePartnershipIfNeeded(

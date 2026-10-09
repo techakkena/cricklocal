@@ -63,6 +63,11 @@ public class PartnershipService {
         return partnershipRepository.saveAndFlush(partnership);
     }
 
+    public void delete(Partnership partnership) {
+        partnershipRepository.delete(partnership);
+        partnershipRepository.flush();
+    }
+
     public int getNextPartnershipNumber(Innings innings) {
 
         List<Partnership> partnerships =

@@ -1488,8 +1488,116 @@ class CricklocalBackendApplicationTests {
                 assertTrue(playerHistoryEntry.getPlaying());
     }
 
-	@Test
-	void undoShouldRollbackAutomaticallyCompletedMatch() {
+    @Test
+    void undoRunOutShouldRestoreOriginalStrikerAndNonStriker() {
+        String testId = String.valueOf(System.currentTimeMillis());
+
+        Team battingTeam = new Team();
+        battingTeam.setName("Run Out Undo Batting " + testId);
+        battingTeam.setShortName("ROUB" + testId);
+        battingTeam.setCity("Nellore");
+        battingTeam = teamRepository.save(battingTeam);
+
+        Team bowlingTeam = new Team();
+        bowlingTeam.setName("Run Out Undo Bowling " + testId);
+        bowlingTeam.setShortName("ROUW" + testId);
+        bowlingTeam.setCity("Nellore");
+        bowlingTeam = teamRepository.save(bowlingTeam);
+
+        Player originalStriker = createPlayer(
+                "Undo", "Striker", "Original Striker " + testId,
+                PlayerRole.BATTER);
+
+        Player suresh = createPlayer(
+                "Undo", "Suresh", "Suresh " + testId,
+                PlayerRole.BATTER);
+
+        Player replacementBatter = createPlayer(
+                "Undo", "Replacement", "Replacement " + testId,
+                PlayerRole.BATTER);
+
+        Player bowler = createPlayer(
+                "Undo", "Bowler", "Bowler " + testId,
+                PlayerRole.BOWLER);
+
+        Match match = new Match();
+        match.setName("Run Out Undo Match " + testId);
+        match.setFormat(MatchFormat.T20);
+        match.setTotalOvers(5);
+        match.setMaxPlayersPerTeam(3);
+        match.setScheduledAt(Instant.now());
+        match.setVenue("Test Ground");
+        match = matchRepository.save(match);
+
+        MatchTeam battingMatchTeam = new MatchTeam();
+        battingMatchTeam.setMatch(match);
+        battingMatchTeam.setTeam(battingTeam);
+        battingMatchTeam.setSide(MatchTeamSide.TEAM_A);
+        matchTeamRepository.save(battingMatchTeam);
+
+        MatchTeam bowlingMatchTeam = new MatchTeam();
+        bowlingMatchTeam.setMatch(match);
+        bowlingMatchTeam.setTeam(bowlingTeam);
+        bowlingMatchTeam.setSide(MatchTeamSide.TEAM_B);
+        matchTeamRepository.save(bowlingMatchTeam);
+
+        createLineup(match, battingTeam, originalStriker, 1);
+        createLineup(match, battingTeam, suresh, 2);
+        createLineup(match, battingTeam, replacementBatter, 3);
+        createLineup(match, bowlingTeam, bowler, 1);
+
+        StartInningsRequest startRequest = new StartInningsRequest();
+        startRequest.setBattingTeamId(battingTeam.getId());
+        startRequest.setBowlingTeamId(bowlingTeam.getId());
+        startRequest.setInningsNumber(1);
+
+        InningsResponse inningsResponse =
+                inningsService.startInnings(match.getId(), startRequest);
+
+        Innings innings = inningsRepository.findById(inningsResponse.getId())
+                .orElseThrow();
+
+        createInningsState(innings, originalStriker, bowler, suresh);
+
+        RecordDeliveryRequest runOutRequest = createDeliveryRequest(
+                originalStriker, suresh, bowler, 0);
+
+        runOutRequest.setWicket(true);
+        runOutRequest.setWicketType(WicketType.RUN_OUT);
+        runOutRequest.setDismissedPlayerId(suresh.getId());
+        runOutRequest.setDismissalEnd(DismissalEnd.NON_STRIKER);
+        runOutRequest.setNewBatterId(replacementBatter.getId());
+
+        deliveryService.recordDelivery(innings.getId(), runOutRequest);
+
+        deliveryService.undoLastDelivery(innings.getId());
+
+        InningsState restoredState = inningsStateRepository
+                .findByInnings(inningsRepository.findById(innings.getId())
+                        .orElseThrow())
+                .orElseThrow();
+
+        assertEquals(
+                originalStriker.getId(),
+                restoredState.getStriker().getId(),
+                "Undo should restore the original striker");
+
+        assertEquals(
+                suresh.getId(),
+                restoredState.getNonStriker().getId(),
+                "Undo should restore Suresh at the non-striker's end");
+
+        assertEquals(
+                bowler.getId(),
+                restoredState.getCurrentBowler().getId(),
+                "Undo should restore the original bowler");
+
+        assertEquals(1, restoredState.getCurrentOver());
+        assertEquals(0, restoredState.getLegalBallsInOver());
+    }
+
+    @Test
+    void undoShouldRollbackAutomaticallyCompletedMatch() {
 
 				String testId =
 								String.valueOf(System.currentTimeMillis());
@@ -1738,6 +1846,31 @@ class CricklocalBackendApplicationTests {
 				assertEquals(
 								InningsStatus.LIVE,
 								rolledBackInnings.getStatus());
+                                InningsState rolledBackState =
+                                        inningsStateRepository
+                                                .findByInnings(rolledBackInnings)
+                                                .orElseThrow();
+
+                                assertEquals(
+                                        batterB.getId(),
+                                        rolledBackState.getStriker().getId());
+
+                                assertEquals(
+                                        bowlerB.getId(),
+                                        rolledBackState.getNonStriker().getId());
+
+                                assertEquals(
+                                        bowlerA.getId(),
+                                        rolledBackState.getCurrentBowler().getId());
+
+                                assertEquals(
+                                        1,
+                                        rolledBackState.getCurrentOver());
+
+                                assertEquals(
+                                        0,
+                                        rolledBackState.getLegalBallsInOver());
+
 
 				// ---------------------------------------------------------
 				// 11. Verify match rollback
@@ -1756,10 +1889,10 @@ class CricklocalBackendApplicationTests {
 								matchResultRepository
 												.existsByMatch(
 																rolledBackMatch));
-	}
+    }
 
-	@Test
-	void scorecardShouldAssembleInningsBattingAndBowlingData() {
+    @Test
+    void scorecardShouldAssembleInningsBattingAndBowlingData() {
 
 				String testId =
 						String.valueOf(System.currentTimeMillis());
@@ -10446,4 +10579,3 @@ class CricklocalBackendApplicationTests {
   }
 
 }
-

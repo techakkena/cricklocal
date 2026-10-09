@@ -47,7 +47,7 @@ export default function ScoreOperator() {
     useState(false);
   const [matchLineup, setMatchLineup] =
     useState<MatchLineupResponse[]>([]);
-  
+
   const [startingSecondInnings, setStartingSecondInnings] =
     useState(false);
 
@@ -62,7 +62,7 @@ export default function ScoreOperator() {
 
   const [selectedOpeningBowlerId, setSelectedOpeningBowlerId] =
     useState<number | null>(null);
-  
+
   const handleStartSecondInnings = async () => {
           if (!match) {
             setScoreError("Match is not available.");
@@ -128,7 +128,7 @@ export default function ScoreOperator() {
   const [error, setError] = useState("");
   const [scoring, setScoring] = useState(false);
   const [scoreError, setScoreError] = useState("");
-  
+
   const [selectedNextBowlerId, setSelectedNextBowlerId] =
     useState<number | null>(null);
 
@@ -387,11 +387,32 @@ const handleMultiRunExtra = async (extraRuns: number) => {
     }
 
     await submitDelivery(0, selectedExtra, extraRuns);
-};
+  };
 
-const handleWicket = async () => {
+
+  const battingPlayersCount = matchLineup.filter(
+    (player) =>
+      player.teamId === innings?.battingTeamId &&
+      player.playing,
+  ).length;
+
+  const maxWickets = Math.max(0, battingPlayersCount - 1);
+
+  const isFinalWicket =
+    battingPlayersCount > 0 &&
+    (innings?.wickets ?? 0) + 1 >= maxWickets;
+
+
+  const handleWicket = async () => {
     if (!innings || !inningsState) {
       setScoreError("Innings state is not available.");
+      return;
+    }
+
+    if (needsNextBowler) {
+      setScoreError(
+        "Please select the next bowler before recording a delivery.",
+      );
       return;
     }
 
@@ -405,7 +426,7 @@ const handleWicket = async () => {
       return;
     }
 
-    if (!selectedNewBatterId) {
+    if (!isFinalWicket && !selectedNewBatterId) {
       setScoreError("Please select the new batter.");
       return;
     }
@@ -445,7 +466,9 @@ const handleWicket = async () => {
         wicketType: selectedWicketType,
         dismissedPlayerId:
           selectedDismissedPlayerId,
-        newBatterId: selectedNewBatterId,
+        newBatterId: isFinalWicket
+            ? undefined
+            : selectedNewBatterId ?? undefined,
         dismissalEnd:
           selectedWicketType === "RUN_OUT"
             ? selectedDismissalEnd
@@ -615,7 +638,7 @@ const handleWicket = async () => {
         </div>
       </div>
     );
-    
+
   }
 
   if (!match) {
@@ -681,11 +704,6 @@ const handleWicket = async () => {
     remainingLegalBalls % 6
   }`;
 
-  const maxWickets = Math.max(
-    0,
-    (match.maxPlayersPerTeam ?? 11) - 1,
-  );
-
   const remainingWickets = Math.max(
     0,
     maxWickets -
@@ -720,7 +738,7 @@ const handleWicket = async () => {
       (delivery) =>
         delivery.overNumber === displayOverNumber,
     );
-  
+
   console.log("Over state:", {
     currentOver: inningsState?.currentOver,
     legalBallsInOver: inningsState?.legalBallsInOver,
@@ -1192,8 +1210,8 @@ const handleWicket = async () => {
                 </select>
               </div>
             )}
-
             {/* New Batter */}
+            {!isFinalWicket && (
             <div className="mt-4">
               <label className="mb-2 block text-xs font-medium text-gray-700 dark:text-gray-300">
                 New Batter
@@ -1213,18 +1231,24 @@ const handleWicket = async () => {
                 <option value="">Select new batter</option>
 
                 {nextBatterOptions.map((player) => (
-                    <option
-                      key={player.playerId}
-                      value={player.playerId}
-                    >
-                      {player.playerName}
-                      {player.jerseyNumber != null
-                        ? ` (#${player.jerseyNumber})`
-                        : ""}
-                    </option>
-                  ))}
+                  <option
+                    key={player.playerId}
+                    value={player.playerId}
+                  >
+                    {player.playerName}
+                    {player.jerseyNumber != null
+                      ? ` (#${player.jerseyNumber})`
+                      : ""}
+                  </option>
+                ))}
               </select>
             </div>
+          )}
+          {isFinalWicket && (
+            <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+              Final wicket — no new batter required. This innings will be completed.
+            </div>
+          )}
 
             {/* Record */}
             <div className="mt-5 flex justify-start">
@@ -1677,7 +1701,7 @@ const handleWicket = async () => {
                 </p>
               </div>
             </div>
-          )}        
+          )}
 
     </div>
   );
