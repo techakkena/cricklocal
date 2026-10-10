@@ -408,9 +408,9 @@ const handleMultiRunExtra = async (extraRuns: number) => {
   const maxWickets = Math.max(0, battingPlayersCount - 1);
 
   const isFinalWicket =
+    selectedWicketType !== "RETIRED_HURT" &&
     battingPlayersCount > 0 &&
     (innings?.wickets ?? 0) + 1 >= maxWickets;
-
 
   const handleWicket = async () => {
     if (!innings || !inningsState) {
@@ -753,25 +753,33 @@ const handleMultiRunExtra = async (extraRuns: number) => {
   return (
     <div className="space-y-6 p-6">
 
-      {/* Match Header */}
+    {/* Match Header */}
       <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03]">
+
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-800 dark:text-white/90">
-              Score Operator
-            </h1>
+          <div className="flex items-center gap-4">
+            <img
+              src="/images/logo/cricklocal-logo-light.png"
+              alt="CricketLocal"
+              className="h-10 w-auto shrink-0 object-contain"
+            />
 
-            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              {match.name}
-            </p>
+            <div>
+              <h1 className="text-2xl font-semibold text-gray-800 dark:text-white/90">
+                Score Operator
+              </h1>
+
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {match.name}
+              </p>
+            </div>
+
+            <span className="inline-flex w-fit rounded-full bg-success-50 px-3 py-1 text-sm font-medium text-success-700 dark:bg-success-500/10 dark:text-success-400">
+              {match.status}
+            </span>
           </div>
-
-          <span className="inline-flex w-fit rounded-full bg-success-50 px-3 py-1 text-sm font-medium text-success-700 dark:bg-success-500/10 dark:text-success-400">
-            {match.status}
-          </span>
         </div>
       </div>
-
       {/* Score */}
       <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03]">
         <div className="text-center">

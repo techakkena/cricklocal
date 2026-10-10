@@ -1,3 +1,4 @@
+
 export interface BatterLineupOption {
   playerId: number;
   teamId: number;
@@ -8,6 +9,7 @@ export interface BatterDeliveryParticipation {
   batterId: number;
   nonStrikerId: number;
   dismissedPlayerId: number | null;
+  wicketType?: string | null;
 }
 
 export function getNextBatterOptions<
@@ -20,22 +22,43 @@ export function getNextBatterOptions<
   nonStrikerId: number | null | undefined,
 ): T[] {
   const appearedPlayerIds = new Set<number>();
+  const retiredHurtPlayerIds = new Set<number>();
+  const dismissedPlayerIds = new Set<number>();
 
   for (const delivery of deliveries) {
     appearedPlayerIds.add(delivery.batterId);
     appearedPlayerIds.add(delivery.nonStrikerId);
 
-    if (delivery.dismissedPlayerId != null) {
-      appearedPlayerIds.add(delivery.dismissedPlayerId);
+    const playerId = delivery.dismissedPlayerId;
+    if (playerId == null) continue;
+
+    if (delivery.wicketType === "RETIRED_HURT") {
+      retiredHurtPlayerIds.add(playerId);
+    } else if (delivery.wicketType != null) {
+      dismissedPlayerIds.add(playerId);
+      retiredHurtPlayerIds.delete(playerId);
     }
   }
 
-  return lineup.filter(
-    (player) =>
-      player.teamId === battingTeamId &&
-      player.playing &&
-      !appearedPlayerIds.has(player.playerId) &&
-      player.playerId !== strikerId &&
-      player.playerId !== nonStrikerId,
-  );
+  return lineup.filter((player) => {
+    const isEligibleTeamPlayer =
+      player.teamId === battingTeamId && player.playing;
+
+    const isCurrentlyAtCrease =
+      player.playerId === strikerId ||
+      player.playerId === nonStrikerId;
+
+    const canReturnAfterRetiredHurt =
+      retiredHurtPlayerIds.has(player.playerId) &&
+      !dismissedPlayerIds.has(player.playerId);
+
+    return (
+      isEligibleTeamPlayer &&
+      !isCurrentlyAtCrease &&
+      (
+        !appearedPlayerIds.has(player.playerId) ||
+        canReturnAfterRetiredHurt
+      )
+    );
+  });
 }

@@ -122,6 +122,28 @@ function getDeliveryTitle(delivery: DeliveryResponse): string {
   return getDeliveryLabel(delivery);
 }
 
+function getRetiredHurtPlayerIds(
+  deliveries: DeliveryResponse[],
+): Set<number> {
+  const retiredHurtPlayerIds = new Set<number>();
+
+  for (const delivery of deliveries) {
+    const playerId = delivery.dismissedPlayerId;
+
+    if (playerId == null) {
+      continue;
+    }
+
+    if (delivery.wicketType === "RETIRED_HURT") {
+      retiredHurtPlayerIds.add(playerId);
+    } else if (delivery.wicketType != null) {
+      retiredHurtPlayerIds.delete(playerId);
+    }
+  }
+
+  return retiredHurtPlayerIds;
+}
+
 function getCurrentOverNumber(
   legalBalls: number,
 ): number {
@@ -381,7 +403,7 @@ export default function ScoreDisplay() {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-950">
+    <div className="flex min-h-screen items-center justify-center bg-gray-950">
         <p className="text-sm text-gray-300">
           Loading live display...
         </p>
@@ -492,12 +514,21 @@ export default function ScoreDisplay() {
     ? "text-gray-400"
     : "text-gray-500";
 
+  const retiredHurtPlayerIds = getRetiredHurtPlayerIds(deliveries);
+
   return (
     <div className={pageClasses}>
       <div className="mx-auto min-h-screen max-w-7xl px-3 py-4 sm:px-5 sm:py-6 lg:px-8">
 
-        {/* Header */}
-        <header className="mb-4 flex items-center justify-between gap-3">
+      {/* Header */}
+      <header className="mb-4 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <img
+            src="/images/logo/cricklocal-logo-light.png"
+            alt="CricketLocal"
+            className="h-10 w-auto shrink-0 object-contain"
+          />
+
           <div className="min-w-0">
             {scorecard.seriesName && (
               <p className="truncate text-xs font-semibold uppercase tracking-[0.2em] text-brand-500 sm:text-sm">
@@ -509,8 +540,9 @@ export default function ScoreDisplay() {
               {scorecard.matchName}
             </h1>
           </div>
+        </div>
 
-          <button
+        <button
             type="button"
             onClick={() =>
               setDarkMode((value) => !value)
@@ -1442,6 +1474,9 @@ export default function ScoreDisplay() {
                                         liveInnings?.inningsId &&
                                       lineupPlayer.playerId === nonStrikerId;
 
+                                      const isRetiredHurt =
+                                          retiredHurtPlayerIds.has(lineupPlayer.playerId);
+
                                     return (
                                       <tr
                                         key={lineupPlayer.id}
@@ -1511,19 +1546,24 @@ export default function ScoreDisplay() {
                                         </td>
 
                                         <td className="px-3 py-3 text-right">
-                                          {!batting ? (
-                                            <span className="text-xs font-semibold uppercase text-gray-400">
-                                              YET TO BAT
-                                            </span>
-                                          ) : batting.dismissed ? (
-                                            <span className="text-xs font-semibold text-red-500">
-                                              OUT
-                                            </span>
-                                          ) : (
-                                            <span className="text-xs font-semibold text-success-500">
-                                              NOT OUT
-                                            </span>
-                                          )}
+                                        {!batting ? (
+                                          <span className="text-xs font-semibold uppercase text-gray-400">
+                                            YET TO BAT
+                                          </span>
+                                        ) : isRetiredHurt ? (
+                                          <span className="text-xs font-semibold text-amber-500">
+                                            RETIRED HURT
+                                          </span>
+                                        ) : batting.dismissed ? (
+                                          <span className="text-xs font-semibold text-red-500">
+                                            OUT
+                                          </span>
+                                        ) : (
+                                          <span className="text-xs font-semibold text-success-500">
+                                            NOT OUT
+                                          </span>
+                                        )}
+
                                         </td>
                                       </tr>
                                     );
