@@ -372,7 +372,9 @@ public class DeliveryService {
                         innings.setCompletedAt(Instant.now());
                 }
 
-                if (savedDelivery.getWicket()) {
+                if (Boolean.TRUE.equals(savedDelivery.getWicket())
+                        && savedDelivery.getWicketType()
+                                != WicketType.RETIRED_HURT) {
 
                         innings.setWickets(
                                 innings.getWickets() + 1);
@@ -504,9 +506,11 @@ public class DeliveryService {
                                 innings.getLegalBalls() - 1);
                 }
 
-                if (Boolean.TRUE.equals(lastDelivery.getWicket())) {
-                        innings.setWickets(
-                                innings.getWickets() - 1);
+                if (Boolean.TRUE.equals(lastDelivery.getWicket())
+                        && lastDelivery.getWicketType()
+                                != WicketType.RETIRED_HURT) {
+                innings.setWickets(
+                        innings.getWickets() - 1);
                 }
 
                 innings.setStatus(InningsStatus.LIVE);
@@ -592,6 +596,7 @@ public class DeliveryService {
                 }
 
                 if (Boolean.TRUE.equals(delivery.getWicket())
+                        && delivery.getWicketType() != WicketType.RETIRED_HURT
                         && delivery.getDismissedPlayer() != null) {
 
                         BattingInnings dismissedBattingInnings =
@@ -1050,66 +1055,66 @@ public class DeliveryService {
     }
 
     private void updateBattingStatistics(
-                        Innings innings,
-                        Delivery delivery) {
+                Innings innings,
+                Delivery delivery) {
 
-                BattingInnings battingInnings =
-                        battingInningsService.getOrCreate(
-                                innings,
-                                delivery.getBatter());
+        BattingInnings battingInnings =
+                battingInningsService.getOrCreate(
+                        innings,
+                        delivery.getBatter());
 
-                int runs = delivery.getRunsOffBat();
+        int runs = delivery.getRunsOffBat();
 
-                battingInnings.setRuns(
-                        battingInnings.getRuns() + runs);
+        battingInnings.setRuns(
+                battingInnings.getRuns() + runs);
 
-                // A batter faces a ball only when it is a legal delivery.
-                if (delivery.getLegalDelivery()
-                        && delivery.getExtraType() == ExtraType.NONE) {
+        // A batter faces a ball only when it is a legal delivery.
+        if (delivery.getLegalDelivery()
+                && delivery.getExtraType() == ExtraType.NONE) {
 
-                        battingInnings.setBallsFaced(
-                                battingInnings.getBallsFaced() + 1);
-                }
-
-                if (runs == 4) {
-
-                        battingInnings.setFours(
-                                battingInnings.getFours() + 1);
-                }
-
-                if (runs == 6) {
-
-                        battingInnings.setSixes(
-                                battingInnings.getSixes() + 1);
-                }
-
-                if (delivery.getLegalDelivery()
-                        && delivery.getExtraType() == ExtraType.NONE
-                        && runs == 0) {
-
-                        battingInnings.setDots(
-                                battingInnings.getDots() + 1);
-                }
-
-                if (Boolean.TRUE.equals(delivery.getWicket())
-                        && delivery.getDismissedPlayer() != null
-                        && delivery.getDismissedPlayer().getId()
-                                .equals(delivery.getBatter().getId())) {
-
-                        battingInnings.setDismissed(true);
-
-                        if (delivery.getWicketType() != null) {
-
-                        battingInnings.setDismissalType(
-                                delivery.getWicketType().name());
-                        }
-
-                        battingInnings.setDismissedByPlayer(
-                                delivery.getFielder());
-                }
-
-                battingInningsService.save(battingInnings);
+                battingInnings.setBallsFaced(
+                        battingInnings.getBallsFaced() + 1);
         }
+
+        if (runs == 4) {
+                battingInnings.setFours(
+                        battingInnings.getFours() + 1);
+        }
+
+        if (runs == 6) {
+                battingInnings.setSixes(
+                        battingInnings.getSixes() + 1);
+        }
+
+        if (delivery.getLegalDelivery()
+                && delivery.getExtraType() == ExtraType.NONE
+                && runs == 0) {
+
+                battingInnings.setDots(
+                        battingInnings.getDots() + 1);
+        }
+
+        // Retired Hurt is not a dismissal.
+        if (Boolean.TRUE.equals(delivery.getWicket())
+                && delivery.getWicketType() != WicketType.RETIRED_HURT
+                && delivery.getDismissedPlayer() != null
+                && delivery.getBatter() != null
+                && delivery.getDismissedPlayer().getId()
+                        .equals(delivery.getBatter().getId())) {
+
+                battingInnings.setDismissed(true);
+
+                if (delivery.getWicketType() != null) {
+                battingInnings.setDismissalType(
+                        delivery.getWicketType().name());
+                }
+
+                battingInnings.setDismissedByPlayer(
+                        delivery.getFielder());
+        }
+
+        battingInningsService.save(battingInnings);
+    }
 
     private void updateBowlingStatistics(
                         Innings innings,
@@ -1571,6 +1576,10 @@ public class DeliveryService {
                         return;
                 }
 
+                if (delivery.getWicketType() == WicketType.RETIRED_HURT) {
+                        return;
+                }
+
                 if (delivery.getDismissedPlayer() == null) {
                         return;
                 }
@@ -1582,6 +1591,11 @@ public class DeliveryService {
                         delivery,
                         delivery.getDismissedPlayer(),
                         wicketNumber);
+    }
+
+    private boolean countsAsWicket(Delivery delivery) {
+        return Boolean.TRUE.equals(delivery.getWicket())
+                && delivery.getWicketType() != WicketType.RETIRED_HURT;
     }
 
     private void completeMatchIfNeeded(Innings innings) {
