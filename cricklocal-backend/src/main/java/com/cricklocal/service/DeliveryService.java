@@ -250,8 +250,13 @@ public class DeliveryService {
                 validateWicket(request, innings);
 
                 // 19. Calculate delivery values
+                boolean retiredHurt =
+                        Boolean.TRUE.equals(request.getWicket())
+                                && request.getWicketType() == WicketType.RETIRED_HURT;
+
                 boolean legalDelivery =
-                        request.getExtraType() != ExtraType.WIDE
+                        !retiredHurt
+                                && request.getExtraType() != ExtraType.WIDE
                                 && request.getExtraType() != ExtraType.NO_BALL;
 
                 int totalRuns =
