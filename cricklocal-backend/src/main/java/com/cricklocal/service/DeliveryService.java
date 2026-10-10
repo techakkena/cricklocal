@@ -1296,6 +1296,12 @@ public class DeliveryService {
         boolean isWicket =
                 Boolean.TRUE.equals(delivery.getWicket());
 
+        boolean finalWicketWithoutReplacement =
+        isWicket
+                && newBatter == null
+                && delivery.getDismissalEnd() != null;
+
+
         Player dismissedPlayer = delivery.getDismissedPlayer();
         DismissalEnd dismissalEnd = delivery.getDismissalEnd();
 
@@ -1338,17 +1344,19 @@ public class DeliveryService {
         }
 
         // A final wicket can have no replacement batter.
-        if (isWicket && newBatter == null && dismissalEnd != null) {
+        if (finalWicketWithoutReplacement) {
                 if (dismissalEnd == DismissalEnd.STRIKER) {
-                state.setStriker(null);
+                        state.setStriker(null);
                 } else {
-                state.setNonStriker(null);
+                        state.setNonStriker(null);
                 }
         }
 
         // Rotate strike for completed runs, except for run-outs,
         // where the dismissal-end reconciliation above handles positioning.
-        if (!(isWicket && delivery.getWicketType() == WicketType.RUN_OUT)) {
+        if (!finalWicketWithoutReplacement
+                && !(isWicket
+                && delivery.getWicketType() == WicketType.RUN_OUT)) {
 
                 int runsForStrikeRotation = delivery.getRunsOffBat();
 
@@ -1373,10 +1381,12 @@ public class DeliveryService {
                 state.setLegalBallsInOver(0);
                 state.setCurrentOver(state.getCurrentOver() + 1);
 
-                // Batters change ends at the end of an over.
+                // Do not rotate batters after the final wicket.
+                if (!finalWicketWithoutReplacement) {
                 Player striker = state.getStriker();
                 state.setStriker(state.getNonStriker());
                 state.setNonStriker(striker);
+                }
 
                 } else {
                 state.setLegalBallsInOver(legalBalls);

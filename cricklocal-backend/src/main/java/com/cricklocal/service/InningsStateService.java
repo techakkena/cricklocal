@@ -162,7 +162,7 @@ public class InningsStateService {
     }
 
     private InningsStateResponse toResponse(
-            InningsState state) {
+                InningsState state) {
 
         InningsStateResponse response =
                 new InningsStateResponse();
@@ -175,23 +175,29 @@ public class InningsStateService {
         response.setInningsNumber(
                 state.getInnings().getInningsNumber());
 
-        response.setStrikerId(
-                state.getStriker().getId());
+        if (state.getStriker() != null) {
+                response.setStrikerId(
+                        state.getStriker().getId());
 
-        response.setStrikerName(
-                state.getStriker().getDisplayName());
+                response.setStrikerName(
+                        state.getStriker().getDisplayName());
+        }
 
-        response.setNonStrikerId(
-                state.getNonStriker().getId());
+        if (state.getNonStriker() != null) {
+                response.setNonStrikerId(
+                        state.getNonStriker().getId());
 
-        response.setNonStrikerName(
-                state.getNonStriker().getDisplayName());
+                response.setNonStrikerName(
+                        state.getNonStriker().getDisplayName());
+        }
 
-        response.setCurrentBowlerId(
-                state.getCurrentBowler().getId());
+        if (state.getCurrentBowler() != null) {
+                response.setCurrentBowlerId(
+                        state.getCurrentBowler().getId());
 
-        response.setCurrentBowlerName(
-                state.getCurrentBowler().getDisplayName());
+                response.setCurrentBowlerName(
+                        state.getCurrentBowler().getDisplayName());
+        }
 
         response.setCurrentOver(
                 state.getCurrentOver());

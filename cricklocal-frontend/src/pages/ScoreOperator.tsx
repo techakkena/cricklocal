@@ -29,6 +29,8 @@ import type {
   WicketType,
 } from "../api/types";
 
+import { getNextBatterOptions } from "../utils/nextBatterOptions";
+
 
 type MultiRunExtra = "BYE" | "LEG_BYE";
 
@@ -154,6 +156,8 @@ export default function ScoreOperator() {
 
       const state = updatedState;
 
+      setDeliveries(updatedDeliveries);
+
       const lastDelivery =
         updatedDeliveries.length > 0
           ? updatedDeliveries[updatedDeliveries.length - 1]
@@ -241,6 +245,8 @@ export default function ScoreOperator() {
               getInningsState(liveInnings.id),
               getInningsDeliveries(liveInnings.id),
             ]);
+
+            setDeliveries(initialDeliveries);
 
             const lastDelivery =
               initialDeliveries.length > 0
@@ -672,20 +678,15 @@ const handleMultiRunExtra = async (extraRuns: number) => {
 
   const nextBowlerOptions = bowlingTeamLineup.filter(
     (player) =>
-      player.playerId !== inningsState?.currentBowlerId,
+    player.playerId !== inningsState?.currentBowlerId,
   );
 
-    const battedPlayerIds = new Set(
-    battingInnings?.batting?.map(
-      (player) => player.playerId,
-    ) ?? [],
-  );
-
-  const nextBatterOptions = battingTeamLineup.filter(
-    (player) =>
-      !battedPlayerIds.has(player.playerId) &&
-      player.playerId !== inningsState?.strikerId &&
-      player.playerId !== inningsState?.nonStrikerId,
+  const nextBatterOptions = getNextBatterOptions(
+    battingTeamLineup,
+    innings?.battingTeamId,
+    deliveries,
+    inningsState?.strikerId,
+    inningsState?.nonStrikerId,
   );
 
   const legalBalls =
@@ -726,25 +727,21 @@ const handleMultiRunExtra = async (extraRuns: number) => {
       ? Math.max(0, firstInningsScore + 1 - currentScore)
       : null;
 
+
+
   const currentOverNumber =
     inningsState?.currentOver ?? 1;
 
-  const displayOverNumber = needsNextBowler
-    ? Math.max(1, currentOverNumber - 1)
-    : currentOverNumber;
+  const displayOverNumber =
+    currentOverNumber > 1
+      ? currentOverNumber - 1
+      : currentOverNumber;
 
   const currentOverDeliveries =
     deliveries.filter(
       (delivery) =>
-        delivery.overNumber === displayOverNumber,
+        delivery.overNumber === currentOverNumber,
     );
-
-  console.log("Over state:", {
-    currentOver: inningsState?.currentOver,
-    legalBallsInOver: inningsState?.legalBallsInOver,
-    overComplete:
-      inningsState?.legalBallsInOver === 6,
-  });
 
   return (
     <div className="space-y-6 p-6">
@@ -858,7 +855,7 @@ const handleMultiRunExtra = async (extraRuns: number) => {
                 className="min-w-[72px] rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-center dark:border-gray-700 dark:bg-gray-900/40"
               >
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  {delivery.overNumber}.{delivery.ballInOver}
+                  {displayOverNumber}.{delivery.ballInOver}
                 </p>
 
                 <p className="mt-1 text-lg font-bold text-gray-800 dark:text-white/90">

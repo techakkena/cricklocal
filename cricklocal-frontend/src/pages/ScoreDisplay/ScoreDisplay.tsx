@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 
 import {
@@ -124,35 +124,21 @@ function getDeliveryTitle(delivery: DeliveryResponse): string {
 
 function getCurrentOverNumber(
   legalBalls: number,
-  deliveries: DeliveryResponse[],
 ): number {
-  if (deliveries.length === 0) {
-    return Math.floor(legalBalls / 6) + 1;
-  }
-
-  const lastDelivery =
-    deliveries[deliveries.length - 1];
-
-  const lastOverNumber =
-    (
-      lastDelivery as DeliveryResponse & {
-        overNumber?: number;
-      }
-    ).overNumber;
-
-  /*
-   * If exactly six legal balls have completed an over,
-   * keep showing the completed over until the next
-   * delivery is recorded.
-   */
-  if (legalBalls > 0 && legalBalls % 6 === 0) {
-    return lastOverNumber ?? Math.floor(legalBalls / 6);
-  }
-
-  return (
-    lastOverNumber ??
-    Math.floor(legalBalls / 6) + 1
+  const completedOvers = Math.floor(
+    legalBalls / 6,
   );
+
+  // Keep the completed over visible until
+  // the next legal ball is recorded.
+  if (
+    legalBalls > 0 &&
+    legalBalls % 6 === 0
+  ) {
+    return completedOvers;
+  }
+
+  return completedOvers + 1;
 }
 
 function getCurrentOverDeliveries(
@@ -238,6 +224,9 @@ export default function ScoreDisplay() {
   const [expandedInnings, setExpandedInnings] =
     useState<number | null>(null);
 
+  const manuallySelectedInningsRef = useRef(false);
+  const lastAutoExpandedInningsRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (!displayToken) {
       setError("Display token is missing.");
@@ -247,19 +236,23 @@ export default function ScoreDisplay() {
 
     const token = displayToken;
 
-    async function loadDisplay() {
+
+  async function loadDisplay() {
       try {
         setError("");
 
         const access =
           await validateScoreDisplayAccess(token);
 
-        const [response, lineupResponse, matchResponse] =
-          await Promise.all([
-            getMatchScorecard(access.matchId),
-            getMatchLineup(access.matchId),
-            getMatchById(access.matchId),
-          ]);
+        const [
+          response,
+          lineupResponse,
+          matchResponse,
+        ] = await Promise.all([
+          getMatchScorecard(access.matchId),
+          getMatchLineup(access.matchId),
+          getMatchById(access.matchId),
+        ]);
 
         setScorecard(response);
         setMatchLineup(lineupResponse);
@@ -291,21 +284,53 @@ export default function ScoreDisplay() {
           setDeliveries(inningsDeliveries);
           setInningsState(currentState);
 
-          setExpandedInnings(
-            liveInnings.inningsNumber,
-          );
+          // Automatically expand when the active innings changes.
+          // Otherwise, preserve the user's manual selection.
+          const latestInningsNumber =
+            response.innings[
+              response.innings.length - 1
+            ].inningsNumber;
+
+          if (
+            lastAutoExpandedInningsRef.current !==
+            latestInningsNumber
+          ) {
+            lastAutoExpandedInningsRef.current =
+              latestInningsNumber;
+
+            manuallySelectedInningsRef.current = false;
+
+            setExpandedInnings(latestInningsNumber);
+          }
         } else {
           setDeliveries([]);
           setInningsState(null);
 
-          if (
-            response.innings.length > 0
-          ) {
-            setExpandedInnings(
+          if (response.innings.length > 0) {
+            const latestInningsNumber =
               response.innings[
                 response.innings.length - 1
-              ].inningsNumber,
-            );
+              ].inningsNumber;
+
+            if (
+              lastAutoExpandedInningsRef.current !==
+              latestInningsNumber
+            ) {
+              lastAutoExpandedInningsRef.current =
+                latestInningsNumber;
+
+              manuallySelectedInningsRef.current = false;
+
+              setExpandedInnings(
+                latestInningsNumber,
+              );
+            } else if (
+              !manuallySelectedInningsRef.current
+            ) {
+              setExpandedInnings(
+                latestInningsNumber,
+              );
+            }
           }
         }
 
@@ -406,7 +431,6 @@ export default function ScoreDisplay() {
     liveInnings
       ? getCurrentOverNumber(
           liveInnings.legalBalls,
-          deliveries,
         )
       : 1;
 
@@ -1185,13 +1209,13 @@ export default function ScoreDisplay() {
                   {/* Innings Header */}
                   <button
                     type="button"
-                    onClick={() =>
+                    onClick={() => {
+                      manuallySelectedInningsRef.current = true;
+
                       setExpandedInnings(
-                        expanded
-                          ? null
-                          : innings.inningsNumber,
-                      )
-                    }
+                        expanded ? null : innings.inningsNumber,
+                      );
+                    }}
                     className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left sm:px-6"
                   >
                     <div className="min-w-0">
