@@ -157,6 +157,8 @@ function getCurrentOverDeliveries(
 function getBattingPlayers(
   innings: ScorecardResponse["innings"][number],
   matchLineup: MatchLineupResponse[],
+  strikerId?: number | null,
+  nonStrikerId?: number | null,
 ) {
   const teamPlayers = matchLineup.filter(
     (player) =>
@@ -171,21 +173,41 @@ function getBattingPlayers(
           batter.playerId === player.playerId,
       );
 
-      return {
-        player,
-        batting,
-      };
+      return { player, batting };
     })
     .sort((a, b) => {
+      const getGroup = (
+        item: (typeof teamPlayers extends never
+          ? never
+          : {
+              player: (typeof a)["player"];
+              batting: (typeof a)["batting"];
+            }),
+      ) => {
+        if (item.batting?.dismissed) return 0;
+
+        if (item.player.playerId === strikerId) return 1;
+
+        if (item.player.playerId === nonStrikerId) return 2;
+
+        if (item.batting) return 3;
+
+        return 4;
+      };
+
+      const groupDifference =
+        getGroup(a) - getGroup(b);
+
+      if (groupDifference !== 0) {
+        return groupDifference;
+      }
+
       if (a.batting && b.batting) {
         return (
           a.batting.battingPosition -
           b.batting.battingPosition
         );
       }
-
-      if (a.batting) return -1;
-      if (b.batting) return 1;
 
       return (
         (a.player.jerseyNumber ?? 999) -
@@ -1327,13 +1349,26 @@ export default function ScoreDisplay() {
                             {getBattingPlayers(
                                 innings,
                                 matchLineup,
-                              ).length} players
+                                innings.inningsId === liveInnings?.inningsId
+                                  ? inningsState?.strikerId
+                                  : null,
+                                innings.inningsId === liveInnings?.inningsId
+                                  ? inningsState?.nonStrikerId
+                                  : null,
+                              )
+                              .length} players
                           </span>
                         </div>
 
                         {getBattingPlayers(
                             innings,
                             matchLineup,
+                            innings.inningsId === liveInnings?.inningsId
+                              ? inningsState?.strikerId
+                              : null,
+                            innings.inningsId === liveInnings?.inningsId
+                              ? inningsState?.nonStrikerId
+                              : null,
                           ).length > 0 ? (
                           <div className="overflow-x-auto rounded-xl border border-gray-800">
                             <table className="w-full min-w-[650px] text-left">
@@ -1377,9 +1412,15 @@ export default function ScoreDisplay() {
 
                               <tbody>
                                 {getBattingPlayers(
-                                    innings,
-                                    matchLineup,
-                                  ).map(({ player: lineupPlayer, batting }) => {
+                                innings,
+                                matchLineup,
+                                innings.inningsId === liveInnings?.inningsId
+                                  ? inningsState?.strikerId
+                                  : null,
+                                innings.inningsId === liveInnings?.inningsId
+                                  ? inningsState?.nonStrikerId
+                                  : null,
+                              ).map(({ player: lineupPlayer, batting }) => {
                                     const strikeRate =
                                       batting && batting.ballsFaced > 0
                                         ? (

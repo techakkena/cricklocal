@@ -123,6 +123,9 @@ export default function ScoreOperator() {
   const [selectedDismissalEnd, setSelectedDismissalEnd] =
   useState<DismissalEnd>("STRIKER");
 
+  const [selectedRunOutRuns, setSelectedRunOutRuns] =
+  useState<number>(0);
+
   const [inningsState, setInningsStateData] =
     useState<InningsStateResponse | null>(null);
 
@@ -465,7 +468,10 @@ const handleMultiRunExtra = async (extraRuns: number) => {
         batterId: inningsState.strikerId,
         nonStrikerId: inningsState.nonStrikerId,
         bowlerId: inningsState.currentBowlerId,
-        runsOffBat: 0,
+        runsOffBat:
+          selectedWicketType === "RUN_OUT"
+            ? selectedRunOutRuns
+            : 0,
         extraType: "NONE",
         extraRuns: 0,
         wicket: true,
@@ -491,6 +497,7 @@ const handleMultiRunExtra = async (extraRuns: number) => {
       setSelectedNewBatterId(null);
       setSelectedFielderId(null);
       setSelectedDismissalEnd("STRIKER");
+      setSelectedRunOutRuns(0);
     } catch (err) {
       setScoreError(
         err instanceof Error
@@ -1037,6 +1044,7 @@ const handleMultiRunExtra = async (extraRuns: number) => {
             onClick={() => {
               setShowWicketPanel(true);
               setScoreError("");
+              setSelectedRunOutRuns(0);
             }}
             disabled={scoring}
             className="rounded-lg bg-red-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1065,6 +1073,7 @@ const handleMultiRunExtra = async (extraRuns: number) => {
                   setSelectedNewBatterId(null);
                   setSelectedFielderId(null);
                   setSelectedDismissalEnd("STRIKER");
+                   setSelectedRunOutRuns(0);
                 }}
                 className="rounded-lg px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-white dark:text-gray-300 dark:hover:bg-gray-800"
               >
@@ -1168,6 +1177,36 @@ const handleMultiRunExtra = async (extraRuns: number) => {
                     ),
                   )}
                 </div>
+              </div>
+            )}
+            {/* Runs completed before Run Out */}
+            {selectedWicketType === "RUN_OUT" && (
+              <div className="mt-4">
+                <label className="mb-2 block text-xs font-medium text-gray-700 dark:text-gray-300">
+                  Runs Completed (off bat)
+                </label>
+
+                <div className="grid grid-cols-4 gap-2 sm:grid-cols-7">
+                  {[0, 1, 2, 3, 4, 5, 6].map((runs) => (
+                    <button
+                      key={runs}
+                      type="button"
+                      onClick={() => setSelectedRunOutRuns(runs)}
+                      disabled={scoring}
+                      className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
+                        selectedRunOutRuns === runs
+                          ? "border-blue-600 bg-blue-600 text-white"
+                          : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                      }`}
+                    >
+                      {runs}
+                    </button>
+                  ))}
+                </div>
+
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Select the runs completed before the wicket. Choose 0 if no runs were completed.
+                </p>
               </div>
             )}
 
