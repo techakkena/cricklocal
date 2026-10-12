@@ -16,6 +16,8 @@ import {
   recordDelivery,
   setInningsState,
   undoLastDelivery,
+  completeMatch,
+  deductShortRuns, 
 } from "../api/scoringApi";
 
 import type {
@@ -64,6 +66,8 @@ export default function ScoreOperator() {
 
   const [selectedOpeningBowlerId, setSelectedOpeningBowlerId] =
     useState<number | null>(null);
+
+  const [selectedShortRuns, setSelectedShortRuns] = useState<number | null>(null);
 
   const handleStartSecondInnings = async () => {
           if (!match) {
@@ -134,6 +138,51 @@ export default function ScoreOperator() {
   const [scoring, setScoring] = useState(false);
   const [scoreError, setScoreError] = useState("");
 
+  const [completingMatch, setCompletingMatch] = useState(false);
+
+  const handleCompleteMatch = async () => {
+    if (!match || !innings || !scorecard) {
+      setScoreError("Match or scorecard is not available.");
+      return;
+    }
+
+    if (match.status === "COMPLETED") {
+      setScoreError("This match has already been completed.");
+      return;
+    }
+
+    if (innings.status !== "COMPLETED" || innings.inningsNumber !== 2) {
+      setScoreError("Both innings must be completed before finalizing the match.");
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Are you sure you want to complete this match? Scoring will be locked."
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setCompletingMatch(true);
+      setScoreError("");
+
+      await completeMatch(numericMatchId);
+
+      const updatedMatch = await getMatchById(numericMatchId);
+      setMatch(updatedMatch);
+
+      await refreshScoreState(innings.id);
+    } catch (err) {
+      setScoreError(
+        err instanceof Error
+          ? err.message
+          : "Failed to complete the match."
+      );
+    } finally {
+      setCompletingMatch(false);
+    }
+  };
+
   const [selectedNextBowlerId, setSelectedNextBowlerId] =
     useState<number | null>(null);
 
@@ -192,6 +241,52 @@ export default function ScoreOperator() {
       setScorecard(updatedScorecard);
       setDeliveries(updatedDeliveries);
     };
+
+  const handleShortRunsDeduction = async (runsDeducted: number) => {
+      if (!innings) {
+        setScoreError("Innings is not available.");
+        return;
+      }
+
+      if (runsDeducted < 1 || runsDeducted > 5) {
+        setScoreError("Short Runs deduction must be between 1 and 5.");
+        return;
+      }
+
+      const currentTotal = innings.totalRuns ?? 0;
+
+      if (currentTotal < runsDeducted) {
+        setScoreError("Short Runs deduction cannot make the score negative.");
+        return;
+      }
+
+      const confirmed = window.confirm(
+        `Deduct ${runsDeducted} run${runsDeducted === 1 ? "" : "s"} from ${innings.battingTeamName}? This will not change balls, batter runs, or wickets.`,
+      );
+
+      if (!confirmed) return;
+
+      try {
+        setScoring(true);
+        setScoreError("");
+
+        await deductShortRuns(innings.id, {
+          runsDeducted,
+          reason: "Short Runs penalty",
+        });
+
+        await refreshScoreState(innings.id);
+        setSelectedShortRuns(null);
+      } catch (err) {
+        setScoreError(
+          err instanceof Error
+            ? err.message
+            : "Failed to apply Short Runs deduction.",
+        );
+      } finally {
+        setScoring(false);
+      }
+  };
 
     useEffect(() => {
       if (!matchId) {
@@ -750,6 +845,27 @@ const handleMultiRunExtra = async (extraRuns: number) => {
         delivery.overNumber === currentOverNumber,
     );
 
+  
+  const currentInningsAdjustments =
+  scorecard?.innings
+    .find((item) => item.inningsId === innings?.id)
+    ?.shortRunAdjustments.filter(
+      (adjustment) =>
+        adjustment.overNumber === currentOverNumber,
+    ) ?? [];
+
+  const allInningsAdjustments =
+  scorecard?.innings.find(
+    (item) => item.inningsId === innings?.id,
+  )?.shortRunAdjustments ?? [];
+
+  const totalShortRunsDeducted = allInningsAdjustments
+    .filter((adjustment) => !adjustment.reversed)
+    .reduce(
+      (total, adjustment) => total + adjustment.runsDeducted,
+      0,
+    );
+
   return (
     <div className="space-y-6 p-6">
 
@@ -885,7 +1001,62 @@ const handleMultiRunExtra = async (extraRuns: number) => {
           </div>
         )}
       </div>
+      {/* Short Runs Activity */}
+        {(currentInningsAdjustments.length > 0 ||
+          allInningsAdjustments.length > 0) && (
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50/50 p-4 dark:border-amber-900/50 dark:bg-amber-950/10">
 
+            {/* Heading and innings total */}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-sm font-semibold text-gray-800 dark:text-white/90">
+                Short Runs Activity — Over {displayOverNumber}
+              </h3>
+
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/20 dark:text-amber-300">
+                Total Short Runs: −{totalShortRunsDeducted}
+              </span>
+            </div>
+
+            {/* Adjustments for the current over only */}
+            {currentInningsAdjustments.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {currentInningsAdjustments.map((adjustment) => (
+                  <div
+                    key={adjustment.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200/70 bg-white p-3 dark:border-amber-900/40 dark:bg-white/[0.03]"
+                  >
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800 dark:text-white/90">
+                        {adjustment.reversed ? "REVERSED" : "SHORT RUNS"}{" "}
+                        −{adjustment.runsDeducted}
+                      </p>
+
+                      {adjustment.reason && (
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          {adjustment.reason}
+                        </p>
+                      )}
+                    </div>
+
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                        adjustment.reversed
+                          ? "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"
+                          : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300"
+                      }`}
+                    >
+                      {adjustment.reversed ? "Reversed" : "Active"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+                No Short Runs adjustments for this over.
+              </p>
+            )}
+          </div>
+        )}
       {/* Current Players */}
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
 
@@ -1358,6 +1529,15 @@ const handleMultiRunExtra = async (extraRuns: number) => {
                 >
                 Leg Bye
                 </button>
+                {/* Short Runs deduction */}
+                <button
+                  type="button"
+                  disabled={scoring || match?.status === "COMPLETED" || !innings}
+                  onClick={() => setSelectedShortRuns(1)}
+                  className="flex h-14 items-center justify-center rounded-xl border border-amber-300 bg-amber-50 text-base font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-950/50"
+                >
+                  Short Runs
+                </button>
             </div>
 
             {/* No Ball / Bye / Leg Bye selector */}
@@ -1404,6 +1584,42 @@ const handleMultiRunExtra = async (extraRuns: number) => {
                 </div>
                 </div>
             )}
+            {selectedShortRuns !== null && (
+            <div className="mt-4 rounded-xl border border-amber-200 p-4 dark:border-amber-800">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Deduct runs from the batting team's total
+                </p>
+
+                <button
+                  type="button"
+                  disabled={scoring}
+                  onClick={() => setSelectedShortRuns(null)}
+                  className="text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  Cancel
+                </button>
+              </div>
+
+              <div className="mt-3 grid grid-cols-5 gap-3">
+                {[1, 2, 3, 4, 5].map((runs) => (
+                  <button
+                    key={runs}
+                    type="button"
+                    disabled={scoring || match?.status === "COMPLETED"}
+                    onClick={() => void handleShortRunsDeduction(runs)}
+                    className="flex h-12 items-center justify-center rounded-lg border border-amber-300 bg-amber-50 font-semibold text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300"
+                  >
+                    −{runs}
+                  </button>
+                ))}
+              </div>
+
+              <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                No delivery, ball, batter statistic, or wicket will be recorded.
+              </p>
+            </div>
+          )}
             </div>
 
         {/* Scoring Error */}
@@ -1636,12 +1852,16 @@ const handleMultiRunExtra = async (extraRuns: number) => {
             <div className="mt-6 rounded-2xl border border-green-200 bg-green-50 p-5 dark:border-green-900/40 dark:bg-green-950/20">
               <div>
                 <h2 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-                  Match Completed
-                </h2>
+                {match?.status === "COMPLETED"
+                  ? "Match Completed"
+                  : "Second Innings Completed"}
+              </h2>
 
-                <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                  Both innings have been completed.
-                </p>
+              <p className="mt-1 text-sm text-gray-600 dark:text-gray-400">
+                {match?.status === "COMPLETED"
+                  ? "The result is confirmed and scoring is locked."
+                  : "Review both innings, then confirm the match result."}
+              </p>
               </div>
 
               {/* Innings Summary */}
@@ -1739,14 +1959,26 @@ const handleMultiRunExtra = async (extraRuns: number) => {
                   </p>
                 </div>
               )}
-              <div className="mt-5 rounded-xl border border-green-200 bg-white p-4 dark:border-green-900/40 dark:bg-white/[0.03]">
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Match completed. Scoring is now locked.
-                </p>
-              </div>
+              {match?.status !== "COMPLETED" ? (
+                <div className="mt-5">
+                  <button
+                    type="button"
+                    onClick={handleCompleteMatch}
+                    disabled={completingMatch || scoring}
+                    className="rounded-lg bg-green-600 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {completingMatch ? "Completing Match..." : "Match Completed"}
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-5 rounded-xl border border-green-200 bg-white p-4 dark:border-green-900/40 dark:bg-white/[0.03]">
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Match completed. Scoring is now locked.
+                  </p>
+                </div>
+              )}
             </div>
           )}
-
     </div>
   );
 }

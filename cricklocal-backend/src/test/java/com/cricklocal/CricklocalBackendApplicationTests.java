@@ -77,6 +77,7 @@ import com.cricklocal.service.PlayerRegistrationExcelExportService;
 import com.cricklocal.service.PlayerRegistrationLinkService;
 import com.cricklocal.service.PlayerRegistrationInvitationMaintenanceService;
 import com.cricklocal.service.PlayerRegistrationInvitationBackfillService;
+import com.cricklocal.service.MatchResultService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -242,6 +243,9 @@ class CricklocalBackendApplicationTests {
         private PlayerRegistrationInvitationBackfillService playerRegistrationInvitationBackfillService;
 
         @Autowired
+        private MatchResultService matchResultService;
+
+        @Autowired
         private PlayerRegistrationController playerRegistrationController;
 
 	@Autowired
@@ -289,7 +293,7 @@ class CricklocalBackendApplicationTests {
 			match.setTotalOvers(1);
 			match.setMaxPlayersPerTeam(3);
 			match.setScheduledAt(Instant.now());
-			match.setStatus(MatchStatus.COMPLETED);
+			match.setStatus(MatchStatus.LIVE);
 			match = matchRepository.save(match);
 
 			MatchTeam matchTeamA = new MatchTeam();
@@ -367,6 +371,8 @@ class CricklocalBackendApplicationTests {
 			innings.setStatus(InningsStatus.COMPLETED);
 			innings.setTotalRuns(13);
 			inningsRepository.save(innings);
+                        match.setStatus(MatchStatus.COMPLETED);
+                        matchRepository.save(match);
 
 			var leaderboard =
 					leaderboardService.getTopRunScorers();
@@ -433,7 +439,7 @@ class CricklocalBackendApplicationTests {
 			match.setTotalOvers(1);
 			match.setMaxPlayersPerTeam(3);
 			match.setScheduledAt(Instant.now());
-			match.setStatus(MatchStatus.COMPLETED);
+			match.setStatus(MatchStatus.LIVE);
 			match = matchRepository.save(match);
 
 			MatchTeam matchTeamA = new MatchTeam();
@@ -494,6 +500,8 @@ class CricklocalBackendApplicationTests {
 			innings.setStatus(InningsStatus.COMPLETED);
 			innings.setTotalRuns(0);
 			inningsRepository.save(innings);
+                        match.setStatus(MatchStatus.COMPLETED);
+                        matchRepository.save(match);
 
 			var leaderboard =
 					leaderboardService.getTopWicketTakers();
@@ -566,7 +574,7 @@ class CricklocalBackendApplicationTests {
 			match.setTotalOvers(1);
 			match.setMaxPlayersPerTeam(3);
 			match.setScheduledAt(Instant.now());
-			match.setStatus(MatchStatus.COMPLETED);
+			match.setStatus(MatchStatus.LIVE);
 			match = matchRepository.save(match);
 
 			MatchTeam matchTeamA = new MatchTeam();
@@ -629,6 +637,8 @@ class CricklocalBackendApplicationTests {
 			innings.setStatus(InningsStatus.COMPLETED);
 			innings.setTotalRuns(0);
 			inningsRepository.save(innings);
+                        match.setStatus(MatchStatus.COMPLETED);
+                        matchRepository.save(match);
 
 			var leaderboard =
 					leaderboardService.getTopFieldingPlayers();
@@ -658,7 +668,7 @@ class CricklocalBackendApplicationTests {
 	}
 
 	@Test
-    void careerStatisticsShouldAggregateCompletedMatchBattingBowlingAndFielding() {
+        void careerStatisticsShouldAggregateCompletedMatchBattingBowlingAndFielding() {
 
 			String testId = String.valueOf(System.currentTimeMillis());
 
@@ -710,7 +720,7 @@ class CricklocalBackendApplicationTests {
 			match.setFormat(MatchFormat.T20);
 			match.setTotalOvers(1);
 			match.setMaxPlayersPerTeam(3);
-        match.setScheduledAt(Instant.now());
+                        match.setScheduledAt(Instant.now());
 			match.setStatus(MatchStatus.SCHEDULED);
 			match = matchRepository.save(match);
 
@@ -788,7 +798,7 @@ class CricklocalBackendApplicationTests {
 			inningsService.declareInnings(innings1.getId());
 
 			StartInningsRequest innings2Request =
-                new StartInningsRequest();
+                        new StartInningsRequest();
 
         innings2Request.setBattingTeamId(teamB.getId());
         innings2Request.setBowlingTeamId(teamA.getId());
@@ -817,8 +827,24 @@ class CricklocalBackendApplicationTests {
 																		5);
 
 			deliveryService.recordDelivery(
-					innings2.getId(),
-					targetDelivery);
+                                innings2.getId(),
+                                targetDelivery);
+                        
+                        Innings firstBeforeFinalize =
+                                inningsRepository.findByMatchAndInningsNumber(match, 1)
+                                        .orElseThrow();
+
+                        Innings secondBeforeFinalize =
+                                inningsRepository.findByMatchAndInningsNumber(match, 2)
+                                        .orElseThrow();
+
+                        System.out.println("First innings status: "
+                                + firstBeforeFinalize.getStatus());
+
+                        System.out.println("Second innings status: "
+                                + secondBeforeFinalize.getStatus());
+
+                        matchResultService.completeMatch(match.getId());
 
 			Match completedMatch =
 					matchRepository.findById(match.getId())
@@ -1427,6 +1453,22 @@ class CricklocalBackendApplicationTests {
                                 innings2.getId(),
                                 createDeliveryRequest(batterB, bowlerB, bowlerA, 4));
 
+                Innings firstBeforeFinalize =
+                inningsRepository.findByMatchAndInningsNumber(match, 1)
+                        .orElseThrow();
+
+                Innings secondBeforeFinalize =
+                        inningsRepository.findByMatchAndInningsNumber(match, 2)
+                                .orElseThrow();
+
+                System.out.println("First innings status: "
+                        + firstBeforeFinalize.getStatus());
+
+                System.out.println("Second innings status: "
+                        + secondBeforeFinalize.getStatus());
+
+                matchResultService.completeMatch(match.getId());
+
                 Match completedMatch =
                                 matchRepository.findById(match.getId()).orElseThrow();
 
@@ -1597,7 +1639,7 @@ class CricklocalBackendApplicationTests {
     }
 
     @Test
-    void undoShouldRollbackAutomaticallyCompletedMatch() {
+    void undoShouldBeRejectedAfterExplicitMatchCompletion() {
 
 				String testId =
 								String.valueOf(System.currentTimeMillis());
@@ -1806,6 +1848,8 @@ class CricklocalBackendApplicationTests {
 								innings2.getId(),
 								innings2Delivery);
 
+                                matchResultService.completeMatch(match.getId());
+
 				Match savedMatch =
 								matchRepository
 												.findById(match.getId())
@@ -1823,8 +1867,9 @@ class CricklocalBackendApplicationTests {
 				// 9. Undo the winning delivery
 				// ---------------------------------------------------------
 
-				deliveryService.undoLastDelivery(
-								innings2.getId());
+				assertThrows(
+                                        IllegalStateException.class,
+                                        () -> deliveryService.undoLastDelivery(innings2.getId()));
 
 				// ---------------------------------------------------------
 				// 10. Verify innings rollback
@@ -1836,16 +1881,16 @@ class CricklocalBackendApplicationTests {
 												.orElseThrow();
 
 				assertEquals(
-								0,
-								rolledBackInnings.getTotalRuns());
+                                        2,
+                                        rolledBackInnings.getTotalRuns());
 
-				assertEquals(
-								0,
-								rolledBackInnings.getLegalBalls());
+                                assertEquals(
+                                        1,
+                                        rolledBackInnings.getLegalBalls());
 
-				assertEquals(
-								InningsStatus.LIVE,
-								rolledBackInnings.getStatus());
+                                assertEquals(
+                                        InningsStatus.COMPLETED,
+                                        rolledBackInnings.getStatus());
                                 InningsState rolledBackState =
                                         inningsStateRepository
                                                 .findByInnings(rolledBackInnings)
@@ -1868,7 +1913,7 @@ class CricklocalBackendApplicationTests {
                                         rolledBackState.getCurrentOver());
 
                                 assertEquals(
-                                        0,
+                                        1,
                                         rolledBackState.getLegalBallsInOver());
 
 
@@ -1882,13 +1927,10 @@ class CricklocalBackendApplicationTests {
 												.orElseThrow();
 
 				assertEquals(
-								MatchStatus.LIVE,
-								rolledBackMatch.getStatus());
+					MatchStatus.COMPLETED,rolledBackMatch.getStatus());
 
-				assertFalse(
-								matchResultRepository
-												.existsByMatch(
-																rolledBackMatch));
+				assertTrue(
+                                        matchResultRepository.existsByMatch(rolledBackMatch));
     }
 
     @Test

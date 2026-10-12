@@ -11,6 +11,7 @@ import com.cricklocal.entity.InningsState;
 import com.cricklocal.entity.MatchLineup;
 import com.cricklocal.entity.Partnership;
 import com.cricklocal.entity.Player;
+import com.cricklocal.entity.ShortRunAdjustment;
 import com.cricklocal.enums.DeliveryResult;
 import com.cricklocal.enums.DismissalEnd;
 import com.cricklocal.enums.ExtraType;
@@ -26,6 +27,7 @@ import com.cricklocal.repository.MatchRepository;
 import com.cricklocal.repository.MatchResultRepository;
 import com.cricklocal.repository.FieldingEventRepository;
 import com.cricklocal.repository.FallOfWicketRepository;
+import com.cricklocal.repository.ShortRunAdjustmentRepository;
 import com.cricklocal.entity.Match;
 import com.cricklocal.enums.MatchStatus;
 import org.springframework.stereotype.Service;
@@ -33,7 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import com.cricklocal.dto.RecordMatchResultRequest;
 import com.cricklocal.enums.MatchResultType;
-
+import java.util.List;
 
 @Service
 public class DeliveryService {
@@ -52,6 +54,7 @@ public class DeliveryService {
     private final FallOfWicketRepository fallOfWicketRepository;
     private final MatchResultRepository matchResultRepository;
     private final MatchRepository matchRepository;
+    private final ShortRunAdjustmentRepository shortRunAdjustmentRepository;
 
 
     public DeliveryService(
@@ -68,7 +71,8 @@ public class DeliveryService {
                 MatchResultService matchResultService,
                 FallOfWicketRepository fallOfWicketRepository,
                 MatchResultRepository matchResultRepository,
-                MatchRepository matchRepository) {
+                MatchRepository matchRepository,
+                ShortRunAdjustmentRepository shortRunAdjustmentRepository) {
 
         this.deliveryRepository = deliveryRepository;
         this.inningsRepository = inningsRepository;
@@ -84,6 +88,7 @@ public class DeliveryService {
         this.fallOfWicketRepository = fallOfWicketRepository;
         this.matchResultRepository = matchResultRepository;
         this.matchRepository = matchRepository;
+        this.shortRunAdjustmentRepository = shortRunAdjustmentRepository;
     }
 
     @Transactional
@@ -92,12 +97,25 @@ public class DeliveryService {
                         RecordDeliveryRequest request) {
 
                 // 1. Find innings
+                 Innings initialInnings = inningsRepository.findById(inningsId)
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException("Innings not found"));
+
+                Match lockedMatch = matchRepository.findByIdForUpdate(
+                                initialInnings.getMatch().getId())
+                        .orElseThrow(() ->
+                                new ResourceNotFoundException("Match not found"));
+
+                if (lockedMatch.getStatus() == MatchStatus.COMPLETED) {
+                        throw new IllegalStateException(
+                                "Cannot record deliveries after match completion");
+                }
+
                 Innings innings = inningsRepository.findById(inningsId)
                         .orElseThrow(() ->
-                                new ResourceNotFoundException(
-                                        "Innings not found"));
+                                new ResourceNotFoundException("Innings not found"));
 
-                // 2. Innings must be live
+                // Innings must be live
                 if (innings.getStatus() != InningsStatus.LIVE) {
                         throw new IllegalArgumentException(
                                 "Innings is not live");
@@ -423,7 +441,7 @@ public class DeliveryService {
 
                 inningsRepository.save(innings);
 
-                completeMatchIfNeeded(innings);
+                // Match result is saved only after operator confirmation.
 
                 createFallOfWicket(innings, savedDelivery);
 
@@ -486,59 +504,122 @@ public class DeliveryService {
                 .toList();
    }
 
-   @Transactional
-   public void undoLastDelivery(Long inningsId) {
+   
+    @Transactional
+    public void undoLastDelivery(Long inningsId) {
 
-                Innings innings =
-                        inningsRepository.findById(inningsId)
-                                .orElseThrow(() ->
-                                        new ResourceNotFoundException(
-                                                "Innings not found"));
+        Innings initialInnings = inningsRepository.findById(inningsId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Innings not found"));
 
-                Delivery lastDelivery =
-                        deliveryRepository
-                                .findTopByInningsOrderByDeliveryNumberDesc(innings)
-                                .orElseThrow(() ->
-                                        new IllegalArgumentException(
-                                                "No deliveries to undo"));
+        Match lockedMatch = matchRepository.findByIdForUpdate(
+                        initialInnings.getMatch().getId())
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Match not found"));
 
-                innings.setTotalRuns(
-                        innings.getTotalRuns()
-                                - lastDelivery.getTotalRuns());
+        if (lockedMatch.getStatus() == MatchStatus.COMPLETED) {
+                throw new IllegalStateException(
+                        "Cannot undo deliveries after match completion");
+        }
 
-                if (lastDelivery.getLegalDelivery()) {
-                        innings.setLegalBalls(
-                                innings.getLegalBalls() - 1);
-                }
+        Innings innings = inningsRepository.findById(inningsId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Innings not found"));
 
-                if (Boolean.TRUE.equals(lastDelivery.getWicket())
-                        && lastDelivery.getWicketType()
-                                != WicketType.RETIRED_HURT) {
+        Delivery lastDelivery = deliveryRepository
+                .findTopByInningsOrderByDeliveryNumberDesc(innings)
+                .orElseThrow(() ->
+                        new IllegalArgumentException("No deliveries to undo"));
+
+        // Reverse deductions associated with the delivery being undone.
+        // Keep the adjustment records for audit history.
+        
+        List<ShortRunAdjustment> linkedAdjustments =
+                shortRunAdjustmentRepository
+                        .findByDeliveryAndReversedFalse(lastDelivery);
+
+        for (ShortRunAdjustment adjustment : linkedAdjustments) {
+        adjustment.setReversed(true);
+
+        // Clear the foreign-key reference before deleting the delivery.
+        adjustment.setDelivery(null);
+        }
+
+        shortRunAdjustmentRepository.saveAll(linkedAdjustments);
+
+        // Ensure the adjustment updates reach the database before delivery deletion.
+        shortRunAdjustmentRepository.flush();
+
+        // Calculate runs from all deliveries except the one being undone.
+        List<Delivery> remainingDeliveries =
+                deliveryRepository
+                        .findByInningsOrderByDeliveryNumberAsc(innings)
+                        .stream()
+                        .filter(delivery ->
+                                !delivery.getId().equals(lastDelivery.getId()))
+                        .toList();
+
+        int remainingDeliveryRuns = remainingDeliveries.stream()
+                .mapToInt(delivery ->
+                        delivery.getTotalRuns() == null
+                                ? 0
+                                : delivery.getTotalRuns())
+                .sum();
+
+        int activeDeductions =
+                shortRunAdjustmentRepository
+                        .sumRunsDeductedByInnings(innings);
+
+        int updatedTotal = remainingDeliveryRuns - activeDeductions;
+
+        if (updatedTotal < 0) {
+                throw new IllegalStateException(
+                        "Cannot undo this delivery because the remaining score "
+                                + "would be negative after Short Runs deductions.");
+        }
+
+        innings.setTotalRuns(updatedTotal);
+
+        // Undo legal ball count.
+        if (Boolean.TRUE.equals(lastDelivery.getLegalDelivery())) {
+                innings.setLegalBalls(
+                        Math.max(0, innings.getLegalBalls() - 1));
+        }
+
+        // Undo wicket count, excluding retired hurt.
+        if (Boolean.TRUE.equals(lastDelivery.getWicket())
+                && lastDelivery.getWicketType() != WicketType.RETIRED_HURT) {
                 innings.setWickets(
-                        innings.getWickets() - 1);
-                }
+                        Math.max(0, innings.getWickets() - 1));
+        }
 
-                innings.setStatus(InningsStatus.LIVE);
-                innings.setCompletedAt(null);
-                if (innings.getInningsNumber() == 2) {
+        innings.setStatus(InningsStatus.LIVE);
+        innings.setCompletedAt(null);
 
-                        Match match = innings.getMatch();
+        // Remove a persisted result if undoing the second innings.
+        if (innings.getInningsNumber() == 2) {
+                Match match = innings.getMatch();
 
-                        matchResultRepository.findByMatch(match)
-                                .ifPresent(matchResult -> {
-                                        matchResultRepository.delete(matchResult);
-                                        match.setStatus(MatchStatus.LIVE);
-                                        matchRepository.save(match);
-                                });
-                }
-                undoBattingStatistics(innings, lastDelivery);
-                undoPartnership(innings, lastDelivery);
-                undoInningsState(innings, lastDelivery);
-                undoBowlingStatistics(innings, lastDelivery);
-                fallOfWicketRepository.deleteByDelivery(lastDelivery);
-                fieldingEventRepository.deleteByDelivery(lastDelivery);
-                deliveryRepository.delete(lastDelivery);
-                inningsRepository.save(innings);
+                matchResultRepository.findByMatch(match)
+                        .ifPresent(matchResult -> {
+                        matchResultRepository.delete(matchResult);
+                        match.setStatus(MatchStatus.LIVE);
+                        matchRepository.save(match);
+                        });
+        }
+
+        // Reverse player, partnership, innings and bowling statistics.
+        undoBattingStatistics(innings, lastDelivery);
+        undoPartnership(innings, lastDelivery);
+        undoInningsState(innings, lastDelivery);
+        undoBowlingStatistics(innings, lastDelivery);
+
+        // Remove events associated with the delivery.
+        fallOfWicketRepository.deleteByDelivery(lastDelivery);
+        fieldingEventRepository.deleteByDelivery(lastDelivery);
+
+        deliveryRepository.delete(lastDelivery);
+        inningsRepository.save(innings);
    }
 
    private void undoBattingStatistics(
@@ -1601,103 +1682,6 @@ public class DeliveryService {
     private boolean countsAsWicket(Delivery delivery) {
         return Boolean.TRUE.equals(delivery.getWicket())
                 && delivery.getWicketType() != WicketType.RETIRED_HURT;
-    }
-
-    private void completeMatchIfNeeded(Innings innings) {
-
-                if (innings.getInningsNumber() != 2) {
-                        return;
-                }
-
-                if (innings.getStatus() != InningsStatus.COMPLETED) {
-                        return;
-                }
-
-                Innings firstInnings =
-                        inningsRepository
-                                .findByMatchAndInningsNumber(
-                                        innings.getMatch(),
-                                        1)
-                                .orElseThrow(() ->
-                                        new IllegalArgumentException(
-                                                "Innings 1 not found for innings 2"));
-
-                int firstInningsRuns =
-                        firstInnings.getTotalRuns();
-
-                int secondInningsRuns =
-                        innings.getTotalRuns();
-
-                RecordMatchResultRequest request =
-                        new RecordMatchResultRequest();
-
-                if (secondInningsRuns > firstInningsRuns) {
-
-                        int playingPlayers = (int) matchLineupRepository
-                                .findByMatchAndTeam(
-                                        innings.getMatch(),
-                                        innings.getBattingTeam())
-                                .stream()
-                                .filter(lineup ->
-                                        Boolean.TRUE.equals(lineup.getPlaying()))
-                                .count();
-
-                        int wicketsInHand =
-                                (playingPlayers - 1) - innings.getWickets();
-
-                        request.setResultType(
-                                MatchResultType.WON_BY_WICKETS);
-
-                        request.setWinningTeamId(
-                                innings.getBattingTeam().getId());
-
-                        request.setLosingTeamId(
-                                firstInnings.getBattingTeam().getId());
-
-                        request.setMarginWickets(
-                                wicketsInHand);
-
-                        request.setResultText(
-                                innings.getBattingTeam().getName()
-                                        + " won by "
-                                        + wicketsInHand
-                                        + " wickets");
-
-                } else if (secondInningsRuns < firstInningsRuns) {
-
-                        int marginRuns =
-                                firstInningsRuns - secondInningsRuns;
-
-                        request.setResultType(
-                                MatchResultType.WON_BY_RUNS);
-
-                        request.setWinningTeamId(
-                                firstInnings.getBattingTeam().getId());
-
-                        request.setLosingTeamId(
-                                innings.getBattingTeam().getId());
-
-                        request.setMarginRuns(
-                                marginRuns);
-
-                        request.setResultText(
-                                firstInnings.getBattingTeam().getName()
-                                        + " won by "
-                                        + marginRuns
-                                        + " runs");
-
-                } else {
-
-                          request.setResultType(
-                                MatchResultType.TIE);
-
-                                request.setResultText(
-                                "Match tied");
-                        }
-
-                matchResultService.recordResult(
-                        innings.getMatch().getId(),
-                        request);
     }
 
 }

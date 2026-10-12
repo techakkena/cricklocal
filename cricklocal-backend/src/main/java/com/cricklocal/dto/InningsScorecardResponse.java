@@ -34,6 +34,8 @@ public class InningsScorecardResponse {
 
     private List<FieldingEventResponse> fieldingEvents;
 
+    private List<ShortRunAdjustmentResponse> shortRunAdjustments;
+
     public Long getInningsId() {
         return inningsId;
     }
@@ -154,5 +156,14 @@ public class InningsScorecardResponse {
     public void setFieldingEvents(
             List<FieldingEventResponse> fieldingEvents) {
         this.fieldingEvents = fieldingEvents;
+    }
+
+    public List<ShortRunAdjustmentResponse> getShortRunAdjustments() {
+        return shortRunAdjustments;
+    }
+
+    public void setShortRunAdjustments(
+            List<ShortRunAdjustmentResponse> shortRunAdjustments) {
+            this.shortRunAdjustments = shortRunAdjustments;
     }
 }

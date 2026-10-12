@@ -29,15 +29,7 @@ function getStatusLabel(scorecard: ScorecardResponse): string {
       innings.status === "IN_PROGRESS",
   );
 
-  if (scorecard.innings.length >= 2) {
-    const secondInnings = scorecard.innings.find(
-      (innings) => innings.inningsNumber === 2,
-    );
-
-    if (secondInnings?.status === "COMPLETED") {
-      return "MATCH COMPLETED";
-    }
-  }
+  
 
   if (liveInnings) {
     return "LIVE";
@@ -53,6 +45,7 @@ function getStatusLabel(scorecard: ScorecardResponse): string {
   return "MATCH CENTRE";
 }
 
+
 function getDeliveryRuns(delivery: DeliveryResponse): number {
   const item = delivery as DeliveryResponse & {
     runsOffBat?: number;
@@ -64,6 +57,81 @@ function getDeliveryRuns(delivery: DeliveryResponse): number {
     (item.extraRuns ?? 0)
   );
 }
+
+function getExtrasBreakdown(deliveries: DeliveryResponse[]) {
+  const totals = {
+    byes: 0,
+    legByes: 0,
+    wides: 0,
+    noBalls: 0,
+    penalty: 0,
+    total: 0,
+  };
+
+  for (const delivery of deliveries) {
+    const runs = delivery.extraRuns ?? 0;
+
+    switch (delivery.extraType) {
+      case "BYE":
+        totals.byes += runs;
+        break;
+      case "LEG_BYE":
+        totals.legByes += runs;
+        break;
+      case "WIDE":
+        totals.wides += runs;
+        break;
+      case "NO_BALL":
+        totals.noBalls += runs;
+        break;
+      case "PENALTY":
+        totals.penalty += runs;
+        break;
+      default:
+        break;
+    }
+
+    totals.total += runs;
+  }
+
+  return totals;
+}
+
+function getTopPerformers(scorecard: ScorecardResponse) {
+  const battingPerformers = scorecard.innings
+    .flatMap((innings) =>
+      innings.batting.map((player) => ({
+        ...player,
+        teamName: innings.battingTeamName,
+      })),
+    )
+    .filter((player) => player.ballsFaced > 0 || player.runs > 0)
+    .sort(
+      (a, b) =>
+        b.runs - a.runs ||
+        b.ballsFaced - a.ballsFaced,
+    )
+    .slice(0, 3);
+
+  const bowlingPerformers = scorecard.innings
+    .flatMap((innings) =>
+      innings.bowling.map((player) => ({
+        ...player,
+        teamName: innings.bowlingTeamName,
+      })),
+    )
+    .filter((player) => player.ballsBowled > 0)
+    .sort(
+      (a, b) =>
+        b.wickets - a.wickets ||
+        a.runsConceded - b.runsConceded ||
+        b.ballsBowled - a.ballsBowled,
+    )
+    .slice(0, 3);
+
+  return { battingPerformers, bowlingPerformers };
+}
+
 
 function getDeliveryLabel(delivery: DeliveryResponse): string {
   const item = delivery as DeliveryResponse & {
@@ -252,8 +320,10 @@ export default function ScoreDisplay() {
   const [matchLineup, setMatchLineup] = useState<MatchLineupResponse[]>([]);
 
   const [deliveries, setDeliveries] = useState<
-    DeliveryResponse[]
-  >([]);
+    DeliveryResponse[]>([]);
+
+  const [reportDeliveries, setReportDeliveries] =
+    useState<DeliveryResponse[]>([]);
 
   const [inningsState, setInningsState] =
     useState<InningsStateResponse | null>(null);
@@ -301,6 +371,16 @@ export default function ScoreDisplay() {
         setScorecard(response);
         setMatchLineup(lineupResponse);
         setMatch(matchResponse);
+
+        const allInningsDeliveries = await Promise.all(
+          response.innings.map((innings) =>
+            getInningsDeliveries(innings.inningsId),
+          ),
+        );
+
+        setReportDeliveries(
+          allInningsDeliveries.flat(),
+        );
 
         const liveInnings =
           response.innings.find(
@@ -469,8 +549,10 @@ export default function ScoreDisplay() {
       : null;
 
   const statusLabel =
-    getStatusLabel(scorecard);
-
+    match?.status === "COMPLETED"
+      ? "MATCH COMPLETED"
+      : getStatusLabel(scorecard);
+  
   const currentOverNumber =
     liveInnings
       ? getCurrentOverNumber(
@@ -702,8 +784,7 @@ export default function ScoreDisplay() {
               </div>
             )}
         </section>
-          {isSecondInnings &&
-            liveInnings?.status === "COMPLETED" &&
+          {match?.status === "COMPLETED" &&
             scorecard.result && (
               <div className="border-t border-success-500/20 px-4 py-5 text-center sm:px-8">
                 <p className="text-xs font-semibold uppercase tracking-widest text-success-500">
@@ -715,8 +796,78 @@ export default function ScoreDisplay() {
                 </p>
               </div>
             )}
+        
+            {match?.status === "COMPLETED" && scorecard && (() => {
+              const { battingPerformers, bowlingPerformers } =
+                getTopPerformers(scorecard);
+
+              return (
+                <section className="rounded-xl border border-gray-800 bg-[#111827] p-4 text-white shadow-sm">
+                  <h2 className="mb-4 text-lg font-bold text-center">
+                    Top 3 Match Performers
+                  </h2>
+
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <h3 className="mb-2 font-semibold text-center">Top Batters</h3>
+                      {battingPerformers.length === 0 ? (
+                        <p className="text-sm text-gray-500">
+                          No batting statistics available.
+                        </p>
+                      ) : (
+                        <ol className="space-y-2">
+                          {battingPerformers.map((player, index) => (
+                            <li
+                              key={`${player.inningsId}-${player.playerId}`}
+                              className="rounded-lg border border-gray-800 bg-[#0b1220] p-3"
+                            >
+                              <div className="font-medium">
+                                {index + 1}. {player.playerName}
+                              </div>
+                              <div className="text-sm text-gray-400">
+                                {player.teamName} · {player.runs} runs
+                                ({player.ballsFaced} balls) ·
+                                {` ${player.fours} fours, ${player.sixes} sixes`}
+                              </div>
+                            </li>
+                          ))}
+                        </ol>
+                      )}
+                    </div>
+
+                    <div>
+                      <h3 className="mb-2 font-semibold text-center">Top Bowlers</h3>
+                      {bowlingPerformers.length === 0 ? (
+                        <p className="text-sm text-gray-500">
+                          No bowling statistics available.
+                        </p>
+                      ) : (
+                        <ol className="space-y-2">
+                          {bowlingPerformers.map((player, index) => (
+                            <li
+                              key={`${player.inningsId}-${player.playerId}`}
+                              className="rounded-lg border border-gray-800 bg-[#0b1220] p-3"
+                            >
+                              <div className="font-medium">
+                                {index + 1}. {player.playerName}
+                              </div>
+                              <div className="text-sm text-gray-400">
+                                {player.teamName} · {player.wickets} wickets ·
+                                {` ${player.runsConceded} runs conceded`}
+                                {` · ${player.overs} overs`}
+                              </div>
+                            </li>
+                          ))}
+                        </ol>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              );
+            })()}
+
         {/* Current Players */}
-        {liveInnings && (
+        {match?.status !== "COMPLETED" && liveInnings && (
           <section className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
             <div className="md:col-span-3">
               <p
@@ -1114,7 +1265,7 @@ export default function ScoreDisplay() {
         )}
 
         {/* Current Over */}
-        {liveInnings && (
+        {match?.status !== "COMPLETED" && liveInnings && (
           <section
             className={`mt-4 rounded-2xl border p-5 ${cardClasses}`}
           >
@@ -1315,6 +1466,136 @@ export default function ScoreDisplay() {
                   {/* Expanded Innings */}
                   {expanded && (
                     <div className="border-t border-gray-800 px-4 py-5 sm:px-6">
+                     {/* Short Runs Audit History */}
+                      {innings.shortRunAdjustments.length > 0 && (
+                        <div className="mb-6 rounded-xl border border-gray-800 p-4">
+                          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                            <h3 className="text-base font-bold sm:text-lg">
+                              Short Runs Audit History
+                            </h3>
+
+                            <span className="rounded-lg bg-red-500/10 px-3 py-2 text-sm font-bold text-red-500">
+                              Total Deducted: -
+                              {innings.shortRunAdjustments
+                                .filter((item) => !item.reversed)
+                                .reduce(
+                                  (total, item) =>
+                                    total + item.runsDeducted,
+                                  0,
+                                )}
+                            </span>
+                          </div>
+
+                          <div className="overflow-x-auto">
+                            <table className="w-full min-w-[650px] text-left">
+                              <thead>
+                                <tr>
+                                  {[
+                                    "Over",
+                                    "Runs",
+                                    "Reason",
+                                    "Date / Time",
+                                    "Status",
+                                  ].map((heading) => (
+                                    <th
+                                      key={heading}
+                                      className="px-3 py-3 text-xs font-semibold uppercase tracking-wide"
+                                    >
+                                      {heading}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+
+                              <tbody>
+                                {innings.shortRunAdjustments.map(
+                                  (adjustment) => (
+                                    <tr
+                                      key={adjustment.id}
+                                      className={
+                                        darkMode
+                                          ? "border-t border-gray-800"
+                                          : "border-t border-gray-200"
+                                      }
+                                    >
+                                      <td className="px-3 py-3">
+                                        {adjustment.overNumber ?? "—"}
+                                      </td>
+
+                                      <td className="px-3 py-3 font-bold">
+                                        -{adjustment.runsDeducted}
+                                      </td>
+
+                                      <td className="px-3 py-3">
+                                        {adjustment.reason || "Short Runs"}
+                                      </td>
+
+                                      <td className="px-3 py-3 text-sm">
+                                        {adjustment.createdAt
+                                          ? new Date(
+                                              adjustment.createdAt,
+                                            ).toLocaleString()
+                                          : "—"}
+                                      </td>
+
+                                      <td className="px-3 py-3">
+                                        {adjustment.reversed ? (
+                                          <span className="font-semibold text-gray-400">
+                                            REVERSED
+                                          </span>
+                                        ) : (
+                                          <span className="font-semibold text-red-500">
+                                            ACTIVE
+                                          </span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ),
+                                )}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+                      {/* Extras Breakdown */}
+                      {(() => {
+                        const inningsDeliveries =
+                          reportDeliveries.filter(
+                            (delivery) =>
+                              delivery.inningsId === innings.inningsId,
+                          );
+
+                        const extras =
+                          getExtrasBreakdown(inningsDeliveries);
+
+                        return (
+                          <div className="mb-6 rounded-xl border border-gray-800 p-4">
+                            <h3 className="mb-3 text-base font-bold">
+                              Extras Breakdown
+                            </h3>
+
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                              {[
+                                ["Byes", extras.byes],
+                                ["Leg-byes", extras.legByes],
+                                ["Wides", extras.wides],
+                                ["No-balls", extras.noBalls],
+                                ["Penalty", extras.penalty],
+                                ["Total Extras", extras.total],
+                              ].map(([label, value]) => (
+                                <div key={label}>
+                                  <p className={`text-xs ${secondaryText}`}>
+                                    {label}
+                                  </p>
+                                  <p className="mt-1 text-lg font-bold">
+                                    {value}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
                       {/* Innings Summary */}
                       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                         <div>
@@ -1580,6 +1861,167 @@ export default function ScoreDisplay() {
                           </p>
                         )}
                       </div>
+                    
+                  
+                  {/* Bowling Scorecard */}
+                      <div className="mt-6">
+                        <h3 className="mb-3 text-base font-bold sm:text-lg">
+                          Bowling Scorecard
+                        </h3>
+
+                        {innings.bowling.filter(
+                          (player) => player.ballsBowled > 0,
+                        ).length > 0 ? (
+                          <div className="overflow-x-auto rounded-xl border border-gray-800">
+                            <table className="w-full min-w-[650px] text-left">
+                              <thead
+                                className={
+                                  darkMode
+                                    ? "bg-gray-800/70"
+                                    : "bg-gray-50"
+                                }
+                              >
+                                <tr>
+                                  {["Bowler", "O", "M", "R", "W", "WD", "NB", "ECO"].map(
+                                    (heading) => (
+                                      <th
+                                        key={heading}
+                                        className="px-3 py-3 text-right text-xs font-semibold uppercase tracking-wide first:text-left"
+                                      >
+                                        {heading}
+                                      </th>
+                                    ),
+                                  )}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {innings.bowling
+                                  .filter((player) => player.ballsBowled > 0)
+                                  .map((player) => {
+                                    const economy =
+                                      player.ballsBowled > 0
+                                        ? (
+                                            (player.runsConceded /
+                                              player.ballsBowled) *
+                                            6
+                                          ).toFixed(2)
+                                        : "0.00";
+
+                                    return (
+                                      <tr
+                                        key={player.id}
+                                        className={
+                                          darkMode
+                                            ? "border-t border-gray-800"
+                                            : "border-t border-gray-200"
+                                        }
+                                      >
+                                        <td className="px-3 py-3 font-semibold">
+                                          {player.playerName}
+                                        </td>
+                                        <td className="px-3 py-3 text-right">
+                                          {player.overs}
+                                        </td>
+                                        <td className="px-3 py-3 text-right">
+                                          {player.maidens}
+                                        </td>
+                                        <td className="px-3 py-3 text-right">
+                                          {player.runsConceded}
+                                        </td>
+                                        <td className="px-3 py-3 text-right font-bold">
+                                          {player.wickets}
+                                        </td>
+                                        <td className="px-3 py-3 text-right">
+                                          {player.wides}
+                                        </td>
+                                        <td className="px-3 py-3 text-right">
+                                          {player.noBalls}
+                                        </td>
+                                        <td className="px-3 py-3 text-right">
+                                          {economy}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <p className={`text-sm ${secondaryText}`}>
+                            No bowling data available.
+                          </p>
+                        )}
+                      </div>
+                      
+                      {/* Fall of Wickets */}
+                      <div className="mt-6">
+                        <h3 className="mb-3 text-base font-bold sm:text-lg">
+                          Fall of Wickets
+                        </h3>
+
+                        {innings.fallOfWickets.length > 0 ? (
+                          <div className="overflow-x-auto rounded-xl border border-gray-800">
+                            <table className="w-full min-w-[520px] text-left">
+                              <thead
+                                className={
+                                  darkMode
+                                    ? "bg-gray-800/70"
+                                    : "bg-gray-50"
+                                }
+                              >
+                                <tr>
+                                  {["Wkt", "Score", "Batter", "Over", "Dismissal", "Bowler"].map(
+                                    (heading) => (
+                                      <th
+                                        key={heading}
+                                        className="px-3 py-3 text-xs font-semibold uppercase tracking-wide"
+                                      >
+                                        {heading}
+                                      </th>
+                                    ),
+                                  )}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {innings.fallOfWickets.map((wicket) => (
+                                  <tr
+                                    key={wicket.id}
+                                    className={
+                                      darkMode
+                                        ? "border-t border-gray-800"
+                                        : "border-t border-gray-200"
+                                    }
+                                  >
+                                    <td className="px-3 py-3 font-bold">
+                                      {wicket.wicketNumber}
+                                    </td>
+                                    <td className="px-3 py-3 font-semibold">
+                                      {wicket.score}
+                                    </td>
+                                    <td className="px-3 py-3">
+                                      {wicket.dismissedPlayerName}
+                                    </td>
+                                    <td className="px-3 py-3">
+                                      {`${wicket.overNumber}.${wicket.ballInOver}`}
+                                    </td>
+                                    <td className="px-3 py-3">
+                                      {wicket.wicketType}
+                                    </td>
+                                    <td className="px-3 py-3">
+                                      {wicket.bowlerName ?? "—"}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          
+                          <p className={`text-sm ${secondaryText}`}>
+                            No wickets recorded.
+                          </p>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1598,3 +2040,4 @@ export default function ScoreDisplay() {
     </div>
   );
 }
+

@@ -83,3 +83,39 @@ export function getBowlingInnings(
     `/api/innings/${inningsId}/bowling`,
   );
 }
+
+export function completeMatch(
+  matchId: number,
+): Promise<unknown> {
+  return apiPost<unknown>(
+    `/api/matches/${matchId}/complete`,
+    {},
+    getScoreOperatorSessionHeaders(),
+  );
+}
+
+
+export interface ShortRunAdjustmentRequest {
+  runsDeducted: number;
+  reason?: string;
+}
+
+export interface ShortRunAdjustmentResponse {
+  id: number;
+  inningsId: number;
+  runsDeducted: number;
+  reason: string | null;
+  createdAt: string;
+  updatedTotalRuns: number;
+}
+
+export function deductShortRuns(
+  inningsId: number,
+  request: ShortRunAdjustmentRequest,
+): Promise<ShortRunAdjustmentResponse> {
+  return apiPost<ShortRunAdjustmentResponse>(
+    `/api/innings/${inningsId}/short-run-adjustments`,
+    request,
+    getScoreOperatorSessionHeaders(),
+  );
+}

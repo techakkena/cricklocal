@@ -110,6 +110,19 @@ export interface FieldingEventResponse {
   createdAt: string;
 }
 
+
+
+export interface ShortRunAdjustmentResponse {
+  id: number;
+  inningsId: number;
+  runsDeducted: number;
+  reason: string | null;
+  createdAt: string;
+  updatedTotalRuns: number;
+  reversed: boolean;
+  overNumber: number | null;
+}
+
 export interface InningsScorecardResponse {
   inningsId: number;
   inningsNumber: number;
@@ -130,6 +143,7 @@ export interface InningsScorecardResponse {
   partnerships: PartnershipResponse[];
   fallOfWickets: FallOfWicketResponse[];
   fieldingEvents: FieldingEventResponse[];
+  shortRunAdjustments: ShortRunAdjustmentResponse[];
 }
 
 export interface MatchResultResponse {

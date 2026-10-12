@@ -5,13 +5,18 @@ import com.cricklocal.dto.RecordMatchResultRequest;
 import com.cricklocal.entity.Match;
 import com.cricklocal.entity.MatchResult;
 import com.cricklocal.entity.Team;
+import com.cricklocal.entity.Innings;
 import com.cricklocal.enums.MatchResultType;
 import com.cricklocal.enums.MatchStatus;
+import com.cricklocal.enums.InningsStatus;
+import org.springframework.transaction.annotation.Transactional;
 import com.cricklocal.exception.ResourceNotFoundException;
 import com.cricklocal.repository.MatchRepository;
 import com.cricklocal.repository.MatchResultRepository;
 import com.cricklocal.repository.TeamRepository;
 import com.cricklocal.repository.MatchTeamRepository;
+import com.cricklocal.repository.InningsRepository;
+import com.cricklocal.repository.MatchLineupRepository;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -21,17 +26,24 @@ public class MatchResultService {
     private final MatchResultRepository matchResultRepository;
     private final TeamRepository teamRepository;
     private final MatchTeamRepository matchTeamRepository;
+    private final InningsRepository inningsRepository;
+    private final MatchLineupRepository matchLineupRepository;
+    
 
     public MatchResultService(
             MatchRepository matchRepository,
             MatchResultRepository matchResultRepository,
             TeamRepository teamRepository,
-            MatchTeamRepository matchTeamRepository) {
+            MatchTeamRepository matchTeamRepository,
+            InningsRepository inningsRepository,
+            MatchLineupRepository matchLineupRepository) {
 
         this.matchRepository = matchRepository;
         this.matchResultRepository = matchResultRepository;
         this.teamRepository = teamRepository;
         this.matchTeamRepository = matchTeamRepository;
+        this.inningsRepository = inningsRepository;
+        this.matchLineupRepository = matchLineupRepository;
     }
 
     public MatchResultResponse recordResult(
@@ -105,6 +117,104 @@ public class MatchResultService {
                 }
 
                 matchRepository.save(match);
+
+        return toResponse(savedResult);
+    }
+
+    @Transactional
+    public MatchResultResponse completeMatch(Long matchId) {
+
+        // Lock the match so scoring and finalization can be coordinated.
+        Match match = matchRepository.findByIdForUpdate(matchId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Match not found: " + matchId));
+
+        if (match.getStatus() == MatchStatus.COMPLETED) {
+                throw new IllegalArgumentException(
+                        "Match is already completed");
+        }
+
+        if (matchResultRepository.existsByMatch(match)) {
+                throw new IllegalArgumentException(
+                        "A result already exists for match: " + matchId);
+        }
+
+        Innings first = inningsRepository
+                .findByMatchAndInningsNumber(match, 1)
+                .orElseThrow(() ->
+                        new IllegalArgumentException(
+                                "First innings not found"));
+
+        Innings second = inningsRepository
+                .findByMatchAndInningsNumber(match, 2)
+                .orElseThrow(() ->
+                        new IllegalArgumentException(
+                                "Second innings not found"));
+
+        boolean firstInningsEnded =
+                first.getStatus() == InningsStatus.COMPLETED
+                        || first.getStatus() == InningsStatus.DECLARED;
+
+        boolean secondInningsEnded =
+                second.getStatus() == InningsStatus.COMPLETED
+                        || second.getStatus() == InningsStatus.DECLARED;
+
+        if (!firstInningsEnded || !secondInningsEnded) {
+        throw new IllegalArgumentException(
+                "Both innings must be completed before finalizing the match");
+        }
+
+        MatchResult result = new MatchResult();
+        result.setMatch(match);
+
+        int firstRuns = first.getTotalRuns();
+        int secondRuns = second.getTotalRuns();
+
+        if (secondRuns > firstRuns) {
+
+                long playingPlayers =
+                        matchLineupRepository.countByMatchAndTeamAndPlayingTrue(
+                                match, second.getBattingTeam());
+
+                int wicketsRemaining =
+                        Math.toIntExact(playingPlayers) - 1 - second.getWickets();
+
+                if (wicketsRemaining <= 0) {
+                throw new IllegalArgumentException(
+                        "Cannot calculate a valid wickets margin");
+                }
+
+                result.setResultType(MatchResultType.WON_BY_WICKETS);
+                result.setWinningTeam(second.getBattingTeam());
+                result.setLosingTeam(first.getBattingTeam());
+                result.setMarginWickets(wicketsRemaining);
+                result.setResultText(
+                        second.getBattingTeam().getName()
+                                + " won by " + wicketsRemaining + " wickets");
+
+        } else if (secondRuns < firstRuns) {
+
+                int marginRuns = firstRuns - secondRuns;
+
+                result.setResultType(MatchResultType.WON_BY_RUNS);
+                result.setWinningTeam(first.getBattingTeam());
+                result.setLosingTeam(second.getBattingTeam());
+                result.setMarginRuns(marginRuns);
+                result.setResultText(
+                        first.getBattingTeam().getName()
+                                + " won by " + marginRuns + " runs");
+
+        } else {
+
+                result.setResultType(MatchResultType.TIE);
+                result.setResultText("Match tied");
+        }
+
+        MatchResult savedResult = matchResultRepository.save(result);
+
+        match.setStatus(MatchStatus.COMPLETED);
+        matchRepository.save(match);
 
         return toResponse(savedResult);
     }

@@ -8,11 +8,14 @@ import com.cricklocal.dto.InningsScorecardResponse;
 import com.cricklocal.dto.MatchResultResponse;
 import com.cricklocal.dto.PartnershipResponse;
 import com.cricklocal.dto.ScorecardResponse;
+import com.cricklocal.dto.ShortRunAdjustmentResponse;
+import com.cricklocal.entity.ShortRunAdjustment;
 import com.cricklocal.entity.Innings;
 import com.cricklocal.entity.Match;
 import com.cricklocal.exception.ResourceNotFoundException;
 import com.cricklocal.repository.InningsRepository;
 import com.cricklocal.repository.MatchRepository;
+import com.cricklocal.repository.ShortRunAdjustmentRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
@@ -28,6 +31,7 @@ public class ScorecardService {
     private final FallOfWicketService fallOfWicketService;
     private final FieldingEventService fieldingEventService;
     private final MatchResultService matchResultService;
+    private final ShortRunAdjustmentRepository shortRunAdjustmentRepository;
 
     public ScorecardService(
             MatchRepository matchRepository,
@@ -37,7 +41,8 @@ public class ScorecardService {
             PartnershipService partnershipService,
             FallOfWicketService fallOfWicketService,
             FieldingEventService fieldingEventService,
-            MatchResultService matchResultService) {
+            MatchResultService matchResultService,
+            ShortRunAdjustmentRepository shortRunAdjustmentRepository) {
 
         this.matchRepository = matchRepository;
         this.inningsRepository = inningsRepository;
@@ -47,6 +52,7 @@ public class ScorecardService {
         this.fallOfWicketService = fallOfWicketService;
         this.fieldingEventService = fieldingEventService;
         this.matchResultService = matchResultService;
+        this.shortRunAdjustmentRepository = shortRunAdjustmentRepository;
     }
 
     @Transactional(readOnly = true)
@@ -137,6 +143,27 @@ public class ScorecardService {
                 fieldingEventService
                         .getResponsesByInnings(innings);
 
+        List<ShortRunAdjustmentResponse> shortRunAdjustments =
+        shortRunAdjustmentRepository
+                .findByInningsOrderByCreatedAtAscIdAsc(innings)
+                .stream()
+                .map(adjustment -> {
+                    ShortRunAdjustmentResponse item =
+                            new ShortRunAdjustmentResponse();
+
+                    item.setId(adjustment.getId());
+                    item.setInningsId(innings.getId());
+                    item.setRunsDeducted(adjustment.getRunsDeducted());
+                    item.setReason(adjustment.getReason());
+                    item.setCreatedAt(adjustment.getCreatedAt());
+                    item.setReversed(adjustment.isReversed());
+                    item.setOverNumber(adjustment.getOverNumber());
+
+                    return item;
+                })
+                .toList();
+        
+        response.setShortRunAdjustments(shortRunAdjustments);
         response.setBatting(batting);
         response.setBowling(bowling);
         response.setPartnerships(partnerships);

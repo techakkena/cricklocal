@@ -6,12 +6,15 @@ import com.cricklocal.entity.Innings;
 import com.cricklocal.entity.InningsState;
 import com.cricklocal.entity.MatchLineup;
 import com.cricklocal.entity.Player;
+import com.cricklocal.entity.Match;
 import com.cricklocal.enums.InningsStatus;
+import com.cricklocal.enums.MatchStatus;
 import com.cricklocal.exception.ResourceNotFoundException;
 import com.cricklocal.repository.InningsRepository;
 import com.cricklocal.repository.InningsStateRepository;
 import com.cricklocal.repository.MatchLineupRepository;
 import com.cricklocal.repository.PlayerRepository;
+import com.cricklocal.repository.MatchRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,17 +25,20 @@ public class InningsStateService {
     private final InningsStateRepository inningsStateRepository;
     private final PlayerRepository playerRepository;
     private final MatchLineupRepository matchLineupRepository;
+    private final MatchRepository matchRepository;
 
     public InningsStateService(
             InningsRepository inningsRepository,
             InningsStateRepository inningsStateRepository,
             PlayerRepository playerRepository,
-            MatchLineupRepository matchLineupRepository) {
+            MatchLineupRepository matchLineupRepository,
+            MatchRepository matchRepository) {
 
         this.inningsRepository = inningsRepository;
         this.inningsStateRepository = inningsStateRepository;
         this.playerRepository = playerRepository;
         this.matchLineupRepository = matchLineupRepository;
+        this.matchRepository = matchRepository;
     }
 
     @Transactional
@@ -40,12 +46,30 @@ public class InningsStateService {
             Long inningsId,
             SetInningsStateRequest request) {
 
+        // Load the innings to identify its parent match.
         Innings innings = inningsRepository.findById(inningsId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Innings not found"));
 
+        // Lock the match row to serialize state changes with match completion.
+        Long matchId = innings.getMatch().getId();
+
+        Match match = matchRepository.findByIdForUpdate(matchId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Match not found"));
+
+        // A completed match must not be changed.
+        if (match.getStatus() == MatchStatus.COMPLETED) {
+                throw new IllegalStateException(
+                        "Cannot change innings state after match completion");
+        }
+
+        innings = inningsRepository.findById(inningsId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Innings not found"));
+
         if (innings.getStatus() != InningsStatus.LIVE) {
-            throw new IllegalArgumentException("Innings is not live");
+                throw new IllegalArgumentException("Innings is not live");
         }
 
         if (request.getStrikerId().equals(request.getNonStrikerId())) {
