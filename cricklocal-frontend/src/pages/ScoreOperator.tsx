@@ -134,8 +134,7 @@ export default function ScoreOperator() {
     useState<InningsStateResponse | null>(null);
   
   const requiresInningsSetup =
-    innings?.status === "LIVE" &&
-    (!inningsState || deliveries.length === 0);  
+  innings?.status === "LIVE" && !inningsState; 
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
