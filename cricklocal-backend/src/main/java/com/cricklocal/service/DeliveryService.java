@@ -36,6 +36,7 @@ import java.time.Instant;
 import com.cricklocal.dto.RecordMatchResultRequest;
 import com.cricklocal.enums.MatchResultType;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 public class DeliveryService {
@@ -526,10 +527,30 @@ public class DeliveryService {
                 .orElseThrow(() ->
                         new ResourceNotFoundException("Innings not found"));
 
-        Delivery lastDelivery = deliveryRepository
-                .findTopByInningsOrderByDeliveryNumberDesc(innings)
+        Optional<Delivery> lastDeliveryOptional =
+        deliveryRepository.findTopByInningsOrderByDeliveryNumberDesc(innings);
+
+        if (lastDeliveryOptional.isEmpty()) {
+        InningsState inningsState = inningsStateRepository
+                .findByInnings(innings)
                 .orElseThrow(() ->
-                        new IllegalArgumentException("No deliveries to undo"));
+                        new IllegalArgumentException(
+                                "No deliveries to undo and innings is not initialized"));
+
+        inningsStateRepository.delete(inningsState);
+        inningsStateRepository.flush();
+
+        innings.setTotalRuns(0);
+        innings.setLegalBalls(0);
+        innings.setWickets(0);
+        innings.setStatus(InningsStatus.LIVE);
+        innings.setCompletedAt(null);
+
+        inningsRepository.save(innings);
+        return;
+        }
+
+        Delivery lastDelivery = lastDeliveryOptional.get();
 
         // Reverse deductions associated with the delivery being undone.
         // Keep the adjustment records for audit history.
