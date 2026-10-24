@@ -1173,7 +1173,7 @@ const handleMultiRunExtra = async (extraRuns: number) => {
     )}
 
       {/* Scoring Controls */}
-      {!requiresInningsSetup && inningsState && (
+      {!requiresInningsSetup && (
         <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03]">
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
