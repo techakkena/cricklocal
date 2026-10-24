@@ -132,6 +132,10 @@ export default function ScoreOperator() {
 
   const [inningsState, setInningsStateData] =
     useState<InningsStateResponse | null>(null);
+  
+  const requiresInningsSetup =
+    innings?.status === "LIVE" &&
+    (!inningsState || deliveries.length === 0);  
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -1169,7 +1173,8 @@ const handleMultiRunExtra = async (extraRuns: number) => {
     )}
 
       {/* Scoring Controls */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03]">
+      {!requiresInningsSetup && inningsState && (
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03]">
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -1197,7 +1202,6 @@ const handleMultiRunExtra = async (extraRuns: number) => {
             </span>
           )}
         </div>
-
         {/* Normal Runs */}
         <div className="mt-6 grid grid-cols-3 gap-3 sm:grid-cols-6">
           {[0, 1, 2, 3, 4, 6].map(
@@ -1621,7 +1625,7 @@ const handleMultiRunExtra = async (extraRuns: number) => {
             </div>
           )}
             </div>
-
+            
         {/* Scoring Error */}
         {scoreError && (
           <div className="mt-4 rounded-lg border border-error-200 bg-error-50 px-4 py-3 text-sm text-error-700 dark:border-error-900/40 dark:bg-error-900/10 dark:text-error-400">
@@ -1629,7 +1633,7 @@ const handleMultiRunExtra = async (extraRuns: number) => {
           </div>
         )}
       </div>
-
+    )}
       {/* Innings Information */}
       <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03]">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-white/90">
@@ -1729,7 +1733,7 @@ const handleMultiRunExtra = async (extraRuns: number) => {
             </div>
           </div>
         )}
-        {innings?.status === "LIVE" && !inningsState && (
+        {requiresInningsSetup && (
           <div className="mt-6 rounded-2xl border border-blue-200 bg-blue-50 p-5 dark:border-blue-900/40 dark:bg-blue-950/20">
             <h2 className="text-lg font-semibold text-gray-800 dark:text-white/90">
               {innings.inningsNumber === 1
