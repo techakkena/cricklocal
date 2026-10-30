@@ -13,13 +13,18 @@ export interface BatterDeliveryParticipation {
 }
 
 export function getNextBatterOptions<
-  T extends BatterLineupOption,
+  T extends {
+    playerId: number;
+    teamId: number;
+    playing: boolean;
+  },
 >(
   lineup: T[],
   battingTeamId: number | undefined,
   deliveries: BatterDeliveryParticipation[],
   strikerId: number | null | undefined,
   nonStrikerId: number | null | undefined,
+  battingParticipantLimit?: number,
 ): T[] {
   const appearedPlayerIds = new Set<number>();
   const retiredHurtPlayerIds = new Set<number>();
@@ -40,6 +45,16 @@ export function getNextBatterOptions<
     }
   }
 
+  const currentlyAppearedPlayerIds = new Set(appearedPlayerIds);
+
+  if (strikerId != null) {
+    currentlyAppearedPlayerIds.add(strikerId);
+  }
+
+  if (nonStrikerId != null) {
+    currentlyAppearedPlayerIds.add(nonStrikerId);
+  }
+
   return lineup.filter((player) => {
     const isEligibleTeamPlayer =
       player.teamId === battingTeamId && player.playing;
@@ -52,6 +67,19 @@ export function getNextBatterOptions<
       retiredHurtPlayerIds.has(player.playerId) &&
       !dismissedPlayerIds.has(player.playerId);
 
+    const isNewParticipant =
+      !currentlyAppearedPlayerIds.has(player.playerId);
+
+    const participantLimitReached =
+      battingParticipantLimit != null &&
+      currentlyAppearedPlayerIds.size >= battingParticipantLimit;
+
+    if (
+      isNewParticipant &&
+      participantLimitReached
+    ) {
+      return false;
+    }
     return (
       isEligibleTeamPlayer &&
       !isCurrentlyAtCrease &&

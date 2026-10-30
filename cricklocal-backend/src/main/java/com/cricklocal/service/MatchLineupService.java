@@ -13,6 +13,7 @@ import com.cricklocal.entity.Player;
 import com.cricklocal.entity.Team;
 import com.cricklocal.entity.TeamPlayer;
 import com.cricklocal.entity.Innings;
+import com.cricklocal.enums.MatchFormat;
 import com.cricklocal.exception.ResourceNotFoundException;
 import com.cricklocal.repository.MatchLineupRepository;
 import com.cricklocal.repository.MatchRepository;
@@ -142,9 +143,11 @@ public class MatchLineupService {
                         .filter(item -> Boolean.TRUE.equals(item.getPlaying()))
                         .count();
 
-        if (isNewLineup
+        if (match.getFormat() != MatchFormat.CUSTOM
+                && isNewLineup
                 && Boolean.TRUE.equals(request.getPlaying())
                 && currentPlayingPlayers >= match.getMaxPlayersPerTeam()) {
+
         throw new IllegalArgumentException(
                 "A Playing XI can contain only "
                         + match.getMaxPlayersPerTeam()
@@ -464,7 +467,17 @@ public class MatchLineupService {
                                 Boolean.TRUE.equals(lineup.getPlaying()))
                         .toList();
 
-        if (playingXI.size() != match.getMaxPlayersPerTeam()) {
+        if (match.getFormat() == MatchFormat.CUSTOM) {
+
+        if (playingXI.size() < match.getMaxPlayersPerTeam()) {
+                throw new IllegalArgumentException(
+                        "At least "
+                                + match.getMaxPlayersPerTeam()
+                                + " players must be selected for the match squad");
+        }
+
+        } else if (playingXI.size() != match.getMaxPlayersPerTeam()) {
+
         throw new IllegalArgumentException(
                 "Exactly "
                         + match.getMaxPlayersPerTeam()

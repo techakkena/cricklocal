@@ -241,6 +241,7 @@ export default function MatchPreparation() {
     ).length;
 
     if (
+      match?.format !== "CUSTOM" &&
       playing &&
       currentCount >= (match?.maxPlayersPerTeam ?? 11)
     ) {
@@ -410,11 +411,17 @@ export default function MatchPreparation() {
       (item) => item.playing,
     );
 
-    if (teamLineup.length !== (match?.maxPlayersPerTeam ?? 11)) {
+    const battingPlayerLimit = match?.maxPlayersPerTeam ?? 11;
+
+    if (
+      match?.format === "CUSTOM"
+        ? teamLineup.length < battingPlayerLimit
+        : teamLineup.length !== battingPlayerLimit
+    ) {
       setError(
-        `Exactly ${
-          match?.maxPlayersPerTeam ?? 11
-        } players are required before finalizing.`
+        match?.format === "CUSTOM"
+          ? `At least ${battingPlayerLimit} players are required in the match squad.`
+          : `Exactly ${battingPlayerLimit} players are required before finalizing.`
       );
       return;
     }
@@ -861,7 +868,9 @@ export default function MatchPreparation() {
                       </h4>
 
                       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        Select Playing Players
+                        {match.format === "CUSTOM"
+                          ? "Select Match Squad"
+                          : "Select Playing Players"}
                       </p>
                     </div>
 
@@ -876,8 +885,10 @@ export default function MatchPreparation() {
                       }
                     >
                       {isFinalized
-                      ? "Finalized"
-                      : `${playingCount} / ${match?.maxPlayersPerTeam ?? 11}`}
+                        ? "Finalized"
+                        : match.format === "CUSTOM"
+                          ? `${playingCount} selected · ${match.maxPlayersPerTeam} batting places`
+                          : `${playingCount} / ${match.maxPlayersPerTeam ?? 11}`}
                     </Badge>
                   </div>
                 </div>
@@ -1043,22 +1054,22 @@ export default function MatchPreparation() {
                     disabled={
                       isFinalized ||
                       finalizingTeam === team.teamId ||
-                       playingCount !== (match?.maxPlayersPerTeam ?? 11) ||
+                      (match?.format === "CUSTOM"
+                        ? playingCount < (match?.maxPlayersPerTeam ?? 11)
+                        : playingCount !== (match?.maxPlayersPerTeam ?? 11)) ||
                       !captains[team.teamId] ||
                       !wicketKeepers[team.teamId]
                     }
-                    onClick={() =>
-                      void handleFinalize(team.teamId)
-                    }
+                    onClick={() => void handleFinalize(team.teamId)}
                     className="mt-5 inline-flex h-11 w-full items-center justify-center rounded-lg bg-brand-500 px-4 text-sm font-medium text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {isFinalized
-                      ? "✓ Playing XI Finalized"
-                      : finalizingTeam === team.teamId
-                        ? "Finalizing..."
-                        : "Finalize Playing XI"}
+                      ? "Squad Finalized"
+                      : match?.format === "CUSTOM"
+                        ? `${playingCount} selected · ${match.maxPlayersPerTeam} batting places`
+                        : `${playingCount} / ${match?.maxPlayersPerTeam ?? 11}`}
                   </button>
-                      {isFinalized && (
+                      {isFinalized && match.format !== "CUSTOM" && (
                       <div className="mt-5 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-white/[0.03]">
                         <div className="mb-3">
                           <h5 className="text-sm font-semibold text-gray-800 dark:text-white/90">

@@ -30,6 +30,7 @@ import com.cricklocal.repository.FallOfWicketRepository;
 import com.cricklocal.repository.ShortRunAdjustmentRepository;
 import com.cricklocal.entity.Match;
 import com.cricklocal.enums.MatchStatus;
+import com.cricklocal.enums.MatchFormat;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
@@ -37,6 +38,8 @@ import com.cricklocal.dto.RecordMatchResultRequest;
 import com.cricklocal.enums.MatchResultType;
 import java.util.List;
 import java.util.Optional;
+import java.util.HashSet;
+import java.util.Set;
 
 @Service
 public class DeliveryService {
@@ -403,16 +406,26 @@ public class DeliveryService {
                         innings.setWickets(
                                 innings.getWickets() + 1);
 
-                        int playingPlayers = (int) matchLineupRepository
-                                .findByMatchAndTeam(
-                                        innings.getMatch(),
-                                        innings.getBattingTeam())
-                                .stream()
-                                .filter(lineup ->
-                                        Boolean.TRUE.equals(lineup.getPlaying()))
-                                .count();
+                        int battingPlayerLimit;
 
-                        if (innings.getWickets() >= playingPlayers - 1) {
+                        if (innings.getMatch().getFormat() == MatchFormat.CUSTOM) {
+
+                                battingPlayerLimit =
+                                        innings.getMatch().getMaxPlayersPerTeam();
+
+                        } else {
+
+                                battingPlayerLimit = (int) matchLineupRepository
+                                        .findByMatchAndTeam(
+                                                innings.getMatch(),
+                                                innings.getBattingTeam())
+                                        .stream()
+                                        .filter(lineup ->
+                                                Boolean.TRUE.equals(lineup.getPlaying()))
+                                        .count();
+                        }
+
+                        if (innings.getWickets() >= battingPlayerLimit - 1) {
                                 innings.setStatus(InningsStatus.COMPLETED);
                                 innings.setCompletedAt(Instant.now());
                         }
@@ -931,18 +944,46 @@ public class DeliveryService {
         }
 
         if (request.getNewBatterId() == null) {
-                int playingPlayers = (int) matchLineupRepository
+
+        int battingPlayerLimit;
+
+        if (innings.getMatch().getFormat() == MatchFormat.CUSTOM) {
+
+                battingPlayerLimit =
+                        innings.getMatch().getMaxPlayersPerTeam();
+
+                // Retired Hurt does not count as a wicket,
+                // but a replacement batter must enter.
+                if (request.getWicketType() == WicketType.RETIRED_HURT) {
+                throw new IllegalArgumentException(
+                        "New batter is required when a player retires hurt");
+                }
+
+                // Retired Out and other dismissals count as wickets.
+                int wicketsAfterThisDelivery = innings.getWickets() + 1;
+
+                if (wicketsAfterThisDelivery < battingPlayerLimit - 1) {
+                throw new IllegalArgumentException(
+                        "New batter is required when there is a wicket");
+                }
+
+        } else {
+
+                // Preserve existing behavior for other match formats.
+                battingPlayerLimit = (int) matchLineupRepository
                         .findByMatchAndTeam(
                                 innings.getMatch(),
                                 innings.getBattingTeam())
                         .stream()
-                        .filter(lineup -> Boolean.TRUE.equals(lineup.getPlaying()))
+                        .filter(lineup ->
+                                Boolean.TRUE.equals(lineup.getPlaying()))
                         .count();
 
-                if (innings.getWickets() + 1 < playingPlayers - 1) {
-                        throw new IllegalArgumentException(
-                                "New batter is required when there is a wicket");
+                if (innings.getWickets() + 1 < battingPlayerLimit - 1) {
+                throw new IllegalArgumentException(
+                        "New batter is required when there is a wicket");
                 }
+        }
         }
 
         // RUN_OUT can happen at either end, so the end
@@ -996,6 +1037,21 @@ public class DeliveryService {
         if (!dismissedPlayerLineup.getPlaying()) {
                 throw new IllegalArgumentException(
                         "Dismissed player is not in the playing XI");
+        }
+
+        // Custom Match: do not allow a new batter
+        // when this dismissal ends the innings.
+        if (innings.getMatch().getFormat() == MatchFormat.CUSTOM
+                && request.getNewBatterId() != null
+                && request.getWicketType() != WicketType.RETIRED_HURT) {
+
+                int battingPlayerLimit =
+                        innings.getMatch().getMaxPlayersPerTeam();
+
+                if (innings.getWickets() + 1 >= battingPlayerLimit - 1) {
+                        throw new IllegalArgumentException(
+                                "Cannot select a new batter when the innings is ending");
+                }
         }
 
         // --------------------------------------------------
@@ -1089,6 +1145,94 @@ public class DeliveryService {
                 .equals(newBatter.getId())) {
                 throw new IllegalArgumentException(
                         "New batter is already the current striker");
+        }
+
+        // --------------------------------------------------
+        // Custom Match: enforce distinct batting participants
+        // --------------------------------------------------
+
+        if (innings.getMatch().getFormat() == MatchFormat.CUSTOM
+                && newBatter != null) {
+
+        Set<Long> battingParticipantIds = new HashSet<>();
+        Set<Long> retiredHurtPlayerIds = new HashSet<>();
+        Set<Long> dismissedPlayerIds = new HashSet<>();
+
+        // Read previous delivery history.
+        deliveryRepository
+                .findByInningsOrderByDeliveryNumberAsc(innings)
+                .forEach(delivery -> {
+
+                        if (delivery.getBatter() != null) {
+                        battingParticipantIds.add(
+                                delivery.getBatter().getId());
+                        }
+
+                        if (delivery.getNonStriker() != null) {
+                        battingParticipantIds.add(
+                                delivery.getNonStriker().getId());
+                        }
+
+                        if (Boolean.TRUE.equals(delivery.getWicket())
+                                && delivery.getDismissedPlayer() != null) {
+
+                        Long playerId =
+                                delivery.getDismissedPlayer().getId();
+
+                        if (delivery.getWicketType() == WicketType.RETIRED_HURT) {
+
+                                retiredHurtPlayerIds.add(playerId);
+
+                        } else {
+
+                                dismissedPlayerIds.add(playerId);
+                                retiredHurtPlayerIds.remove(playerId);
+                        }
+                        }
+                });
+
+        // Include current batters.
+        if (state.getStriker() != null) {
+                battingParticipantIds.add(state.getStriker().getId());
+        }
+
+        if (state.getNonStriker() != null) {
+                battingParticipantIds.add(state.getNonStriker().getId());
+        }
+
+        // Include the player being dismissed or retiring.
+        battingParticipantIds.add(dismissedPlayer.getId());
+
+        Long newBatterId = newBatter.getId();
+
+        boolean hasPreviouslyParticipated =
+                battingParticipantIds.contains(newBatterId);
+
+        // A previously participating player can return only
+        // if they retired hurt and were not subsequently dismissed.
+        if (hasPreviouslyParticipated) {
+
+                boolean canReturnAfterRetiredHurt =
+                        retiredHurtPlayerIds.contains(newBatterId)
+                                && !dismissedPlayerIds.contains(newBatterId);
+
+                if (!canReturnAfterRetiredHurt) {
+                throw new IllegalArgumentException(
+                        "Only a player who retired hurt can return to bat");
+                }
+
+        } else {
+
+                // A new participant consumes one batting place.
+                if (battingParticipantIds.size()
+                        >= innings.getMatch().getMaxPlayersPerTeam()) {
+
+                throw new IllegalArgumentException(
+                        "Maximum batting participants ("
+                                + innings.getMatch().getMaxPlayersPerTeam()
+                                + ") have already been used");
+                }
+        }
         }
 
         if (newBatter != null

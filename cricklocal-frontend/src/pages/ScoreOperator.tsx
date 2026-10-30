@@ -496,12 +496,14 @@ const handleMultiRunExtra = async (extraRuns: number) => {
     await submitDelivery(0, selectedExtra, extraRuns);
   };
 
-
-  const battingPlayersCount = matchLineup.filter(
-    (player) =>
-      player.teamId === innings?.battingTeamId &&
-      player.playing,
-  ).length;
+  const battingPlayersCount =
+    match?.format === "CUSTOM"
+      ? match.maxPlayersPerTeam ?? 11
+      : matchLineup.filter(
+          (player) =>
+            player.teamId === innings?.battingTeamId &&
+            player.playing,
+        ).length;
 
   const maxWickets = Math.max(0, battingPlayersCount - 1);
 
@@ -792,6 +794,9 @@ const handleMultiRunExtra = async (extraRuns: number) => {
     deliveries,
     inningsState?.strikerId,
     inningsState?.nonStrikerId,
+    match?.format === "CUSTOM"
+      ? match.maxPlayersPerTeam ?? 11
+      : undefined,
   );
 
   const legalBalls =

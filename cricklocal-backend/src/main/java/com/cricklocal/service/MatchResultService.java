@@ -9,6 +9,7 @@ import com.cricklocal.entity.Innings;
 import com.cricklocal.enums.MatchResultType;
 import com.cricklocal.enums.MatchStatus;
 import com.cricklocal.enums.InningsStatus;
+import com.cricklocal.enums.MatchFormat;
 import org.springframework.transaction.annotation.Transactional;
 import com.cricklocal.exception.ResourceNotFoundException;
 import com.cricklocal.repository.MatchRepository;
@@ -173,12 +174,23 @@ public class MatchResultService {
 
         if (secondRuns > firstRuns) {
 
+                int battingPlayerLimit;
+
+                if (match.getFormat() == MatchFormat.CUSTOM) {
+
+                battingPlayerLimit = match.getMaxPlayersPerTeam();
+
+                } else {
+
                 long playingPlayers =
                         matchLineupRepository.countByMatchAndTeamAndPlayingTrue(
                                 match, second.getBattingTeam());
 
+                battingPlayerLimit = Math.toIntExact(playingPlayers);
+                }
+
                 int wicketsRemaining =
-                        Math.toIntExact(playingPlayers) - 1 - second.getWickets();
+                        battingPlayerLimit - 1 - second.getWickets();
 
                 if (wicketsRemaining <= 0) {
                 throw new IllegalArgumentException(
