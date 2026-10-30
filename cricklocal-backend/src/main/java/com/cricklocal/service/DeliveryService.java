@@ -544,23 +544,8 @@ public class DeliveryService {
         deliveryRepository.findTopByInningsOrderByDeliveryNumberDesc(innings);
 
         if (lastDeliveryOptional.isEmpty()) {
-        InningsState inningsState = inningsStateRepository
-                .findByInnings(innings)
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "No deliveries to undo and innings is not initialized"));
-
-        inningsStateRepository.delete(inningsState);
-        inningsStateRepository.flush();
-
-        innings.setTotalRuns(0);
-        innings.setLegalBalls(0);
-        innings.setWickets(0);
-        innings.setStatus(InningsStatus.LIVE);
-        innings.setCompletedAt(null);
-
-        inningsRepository.save(innings);
-        return;
+                throw new IllegalStateException(
+                        "There are no deliveries to undo");
         }
 
         Delivery lastDelivery = lastDeliveryOptional.get();
@@ -645,7 +630,13 @@ public class DeliveryService {
         // Reverse player, partnership, innings and bowling statistics.
         undoBattingStatistics(innings, lastDelivery);
         undoPartnership(innings, lastDelivery);
+
+        // If this was the first and only delivery, return the innings
+        // to its pre-initialization state.
+        // Always restore the state saved before the delivery,
+        // including when undoing the first and only delivery.
         undoInningsState(innings, lastDelivery);
+
         undoBowlingStatistics(innings, lastDelivery);
 
         // Remove events associated with the delivery.
@@ -1346,22 +1337,31 @@ public class DeliveryService {
         }
 
         // Retired Hurt is not a dismissal.
+        // Record dismissal against the actual dismissed player.
+        // This supports run-outs at either end.
         if (Boolean.TRUE.equals(delivery.getWicket())
                 && delivery.getWicketType() != WicketType.RETIRED_HURT
-                && delivery.getDismissedPlayer() != null
-                && delivery.getBatter() != null
-                && delivery.getDismissedPlayer().getId()
-                        .equals(delivery.getBatter().getId())) {
+                && delivery.getDismissedPlayer() != null) {
 
-                battingInnings.setDismissed(true);
+        BattingInnings dismissedBattingInnings =
+                delivery.getDismissedPlayer().getId()
+                        .equals(battingInnings.getPlayer().getId())
+                        ? battingInnings
+                        : battingInningsService.getOrCreate(
+                                innings,
+                                delivery.getDismissedPlayer());
 
-                if (delivery.getWicketType() != null) {
-                battingInnings.setDismissalType(
+        dismissedBattingInnings.setDismissed(true);
+
+        if (delivery.getWicketType() != null) {
+                dismissedBattingInnings.setDismissalType(
                         delivery.getWicketType().name());
-                }
+        }
 
-                battingInnings.setDismissedByPlayer(
-                        delivery.getFielder());
+        dismissedBattingInnings.setDismissedByPlayer(
+                delivery.getFielder());
+
+        battingInningsService.save(dismissedBattingInnings);
         }
 
         battingInningsService.save(battingInnings);

@@ -197,53 +197,67 @@ export default function ScoreOperator() {
   const numericMatchId = Number(matchId);
 
   const refreshScoreState = async (inningsId: number) => {
-      const [
-        updatedInnings,
-        updatedState,
-        updatedScorecard,
-        updatedDeliveries,
-      ] = await Promise.all([
-        getMatchInnings(numericMatchId),
-        getInningsState(inningsId),
-        getMatchScorecard(numericMatchId),
-        getDeliveries(inningsId),
-      ]);
+    const [
+      updatedInnings,
+      updatedScorecard,
+      updatedDeliveries,
+    ] = await Promise.all([
+      getMatchInnings(numericMatchId),
+      getMatchScorecard(numericMatchId),
+      getDeliveries(inningsId),
+    ]);
 
-      const state = updatedState;
+    let updatedState: InningsStateResponse | null = null;
 
-      setDeliveries(updatedDeliveries);
+    try {
+      updatedState = await getInningsState(inningsId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
 
-      const lastDelivery =
-        updatedDeliveries.length > 0
-          ? updatedDeliveries[updatedDeliveries.length - 1]
-          : null;
+      const stateNotFound =
+        message.includes("404") ||
+        message.includes("Innings state not found");
 
+      if (!stateNotFound) {
+        throw err;
+      }
+    }
+
+    const lastDelivery =
+      updatedDeliveries.length > 0
+        ? updatedDeliveries[updatedDeliveries.length - 1]
+        : null;
+
+    setDeliveries(updatedDeliveries);
+
+    if (!updatedState) {
+      setInningsStateData(null);
+      setNeedsNextBowler(false);
+
+      setSelectedOpeningStrikerId(null);
+      setSelectedOpeningNonStrikerId(null);
+      setSelectedOpeningBowlerId(null);
+    } else {
       const overWaitingForBowler =
-        state.currentOver > 1 &&
-        state.legalBallsInOver === 0 &&
-        lastDelivery?.overNumber === state.currentOver - 1 &&
-        lastDelivery?.bowlerId === state.currentBowlerId;
+        updatedState.currentOver > 1 &&
+        updatedState.legalBallsInOver === 0 &&
+        lastDelivery?.overNumber === updatedState.currentOver - 1 &&
+        lastDelivery?.bowlerId === updatedState.currentBowlerId;
 
-        setNeedsNextBowler(overWaitingForBowler);
-        setInningsStateData(state);
-
-      const updatedLiveInnings =
-        updatedInnings.find(
-          (item) => item.id === inningsId,
-        ) ??
-        updatedInnings.find(
-          (item) => item.status === "IN_PROGRESS",
-        ) ??
-        updatedInnings.find(
-          (item) => item.status === "LIVE",
-        ) ??
-        updatedInnings[updatedInnings.length - 1];
-
-      setInnings(updatedLiveInnings ?? null);
+      setNeedsNextBowler(overWaitingForBowler);
       setInningsStateData(updatedState);
-      setScorecard(updatedScorecard);
-      setDeliveries(updatedDeliveries);
-    };
+    }
+
+    const updatedLiveInnings =
+      updatedInnings.find((item) => item.id === inningsId) ??
+      updatedInnings.find((item) => item.status === "IN_PROGRESS") ??
+      updatedInnings.find((item) => item.status === "LIVE") ??
+      updatedInnings[updatedInnings.length - 1];
+
+    setInnings(updatedLiveInnings ?? null);
+    setScorecard(updatedScorecard);
+    setDeliveries(updatedDeliveries);
+  };
 
   const handleShortRunsDeduction = async (runsDeducted: number) => {
       if (!innings) {
@@ -1194,7 +1208,7 @@ const handleMultiRunExtra = async (extraRuns: number) => {
             <button
               type="button"
               onClick={handleUndo}
-              disabled={scoring}
+              disabled={scoring || deliveries.length === 0}
               className="rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Undo Last Ball
