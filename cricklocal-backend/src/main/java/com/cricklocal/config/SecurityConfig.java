@@ -106,7 +106,7 @@ public class SecurityConfig {
         configuration.setAllowedOrigins(
                 java.util.List.of(
                         "http://localhost:5173",
-                        "https://cricklocal-ikms4haul-techakkena.vercel.app"
+                        "https://cricklocal-20vf26qpd-techakkena.vercel.app"
                 )
         );
 
