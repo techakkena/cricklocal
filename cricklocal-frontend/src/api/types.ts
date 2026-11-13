@@ -214,6 +214,7 @@ export interface PlayerResponse {
   battingStyle: BattingStyle;
   bowlingStyle: BowlingStyle;
   role: PlayerRole;
+  scope: "GLOBAL" | "LOCAL";
   active: boolean;
   createdAt: string;
   teams: PlayerTeamResponse[];
