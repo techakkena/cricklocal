@@ -9,6 +9,7 @@ import com.cricklocal.entity.Player;
 import com.cricklocal.enums.BattingStyle;
 import com.cricklocal.enums.BowlingStyle;
 import com.cricklocal.enums.PlayerRole;
+import com.cricklocal.enums.PlayerScope;
 import com.cricklocal.repository.PlayerRepository;
 import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.DataFormatter;
@@ -92,6 +93,7 @@ public class PlayerImportService {
             player.setBattingStyle(row.battingStyle());
             player.setBowlingStyle(row.bowlingStyle());
             player.setRole(row.role());
+            player.setScope(PlayerScope.LOCAL);
 
             players.add(player);
         }
