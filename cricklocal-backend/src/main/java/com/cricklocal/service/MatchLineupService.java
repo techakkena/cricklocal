@@ -14,6 +14,7 @@ import com.cricklocal.entity.Team;
 import com.cricklocal.entity.TeamPlayer;
 import com.cricklocal.entity.Innings;
 import com.cricklocal.enums.MatchFormat;
+import com.cricklocal.enums.PlayerScope;
 import com.cricklocal.exception.ResourceNotFoundException;
 import com.cricklocal.repository.MatchLineupRepository;
 import com.cricklocal.repository.MatchRepository;
@@ -95,15 +96,31 @@ public class MatchLineupService {
                         "Team does not belong to this match");
         }
 
-        // 2. Player must belong to this team.
+        // 2. Existing team members can be selected directly.
+        //    LOCAL players from the shared local-player pool can also be
+        //    selected here; they are attached to this team automatically
+        //    with the next available jersey number.
         TeamPlayer teamPlayer =
                 teamPlayerRepository.findByTeamAndPlayer(team, player)
-                        .orElseThrow(() ->
-                                new IllegalArgumentException(
-                                        "Player does not belong to this team"));
+                        .orElse(null);
+
+        if (teamPlayer == null) {
+                if (player.getScope() != PlayerScope.LOCAL) {
+                        throw new IllegalArgumentException(
+                                "Player does not belong to this team");
+                }
+
+                teamPlayer = new TeamPlayer();
+                teamPlayer.setTeam(team);
+                teamPlayer.setPlayer(player);
+                teamPlayer.setJerseyNumber(
+                        nextAvailableJerseyNumber(team));
+                teamPlayer.setActive(true);
+                teamPlayer = teamPlayerRepository.save(teamPlayer);
+        }
 
         // 3. Player must be active.
-        if (!teamPlayer.getActive()) {
+        if (!Boolean.TRUE.equals(teamPlayer.getActive())) {
                 throw new IllegalArgumentException(
                         "Player is inactive for this team");
         }
@@ -601,6 +618,18 @@ public class MatchLineupService {
                 .stream()
                 .map(this::toResponse)
                 .toList();
+    }
+
+    private Integer nextAvailableJerseyNumber(Team team) {
+        for (int jerseyNumber = 1; jerseyNumber <= 99; jerseyNumber++) {
+            if (!teamPlayerRepository
+                    .existsByTeamAndJerseyNumberAndActiveTrue(team, jerseyNumber)) {
+                return jerseyNumber;
+            }
+        }
+
+        throw new IllegalArgumentException(
+                "No available jersey number for this team");
     }
 
     private MatchLineupResponse toResponse(
