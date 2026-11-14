@@ -217,8 +217,7 @@ export default function MatchPreparation() {
     return players.filter(
       (player) =>
         player.active &&
-        (player.scope === "LOCAL" ||
-          player.teams.some((team) => team.teamId === teamId)),
+        player.teams.some((team) => team.teamId === teamId),
     );
   }
 
