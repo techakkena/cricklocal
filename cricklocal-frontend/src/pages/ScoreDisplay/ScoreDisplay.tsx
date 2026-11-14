@@ -596,6 +596,132 @@ export default function ScoreDisplay() {
     ? "text-gray-400"
     : "text-gray-500";
 
+  if (match?.status === "SCHEDULED") {
+    const scheduledTeams = [...match.teams].sort((a, b) =>
+      a.side === "HOME" ? -1 : b.side === "HOME" ? 1 : 0,
+    );
+
+    return (
+      <div className={pageClasses}>
+        <div className="mx-auto min-h-screen max-w-7xl px-3 py-4 sm:px-5 sm:py-6 lg:px-8">
+          <header className="mb-6 flex items-center justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+                CricketLocal
+              </p>
+              <h1 className="mt-1 text-xl font-black tracking-tight text-white sm:text-2xl">
+                Match Centre
+              </h1>
+            </div>
+            <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-amber-300">
+              COMING UP
+            </span>
+          </header>
+
+          <section className={`overflow-hidden rounded-3xl border ${cardClasses}`}>
+            <div className="px-4 py-6 sm:px-8 sm:py-8">
+              <div className="text-center">
+                <p className="text-sm font-bold uppercase tracking-[0.25em] text-amber-300">
+                  COMING UP
+                </p>
+
+                <h2 className="mt-3 text-3xl font-black tracking-tight text-white sm:text-4xl">
+                  {match.name}
+                </h2>
+
+                {match.scheduledAt && (
+                  <p className="mt-2 text-sm text-slate-400">
+                    Match starts{" "}
+                    {new Date(match.scheduledAt).toLocaleString()}
+                  </p>
+                )}
+
+                {match.venue && (
+                  <p className="mt-1 text-sm text-slate-500">
+                    {match.venue}
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-8 grid grid-cols-1 items-start gap-6 md:grid-cols-[1fr_auto_1fr]">
+                {scheduledTeams.map((team, index) => {
+                  const teamSquad = matchLineup.filter(
+                    (player) => player.teamId === team.teamId,
+                  );
+
+                  return (
+                    <div
+                      key={team.teamId}
+                      className={`rounded-2xl border border-white/10 bg-white/[0.03] p-5 ${index === 1 ? "md:col-start-3" : "md:col-start-1"}`}
+                    >
+                      <div className="text-center">
+                        <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+                          {team.side === "HOME" ? "Team A" : "Team B"}
+                        </p>
+
+                        <h3 className="mt-2 text-2xl font-black text-white">
+                          {team.teamName}
+                        </h3>
+
+                        {team.shortName && (
+                          <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-slate-400">
+                            {team.shortName}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="mt-5">
+                        <p className="mb-3 text-xs font-bold uppercase tracking-[0.18em] text-slate-500">
+                          Squad
+                        </p>
+
+                        {teamSquad.length > 0 ? (
+                          <div className="space-y-2">
+                            {teamSquad.map((player) => (
+                              <div
+                                key={player.id}
+                                className="flex items-center justify-between gap-3 rounded-xl border border-white/5 bg-black/10 px-3 py-2"
+                              >
+                                <span className="min-w-0 truncate text-sm font-semibold text-slate-200">
+                                  {player.playerName}
+                                </span>
+
+                                <span className="shrink-0 text-[11px] font-semibold text-slate-500">
+                                  {[
+                                    player.captain ? "C" : null,
+                                    player.wicketKeeper ? "WK" : null,
+                                    player.jerseyNumber !== null
+                                      ? `#${player.jerseyNumber}`
+                                      : null,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" / ")}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="rounded-xl border border-dashed border-white/10 px-3 py-4 text-center text-sm text-slate-500">
+                            Squad not available.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                <div className="flex items-center justify-center md:col-start-2 md:row-start-1">
+                  <span className="text-3xl font-black text-slate-500">
+                    VS
+                  </span>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    );
+  }
   const retiredHurtPlayerIds = getRetiredHurtPlayerIds(deliveries);
 
   return (
