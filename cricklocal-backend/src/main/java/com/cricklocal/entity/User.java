@@ -1,6 +1,6 @@
 package com.cricklocal.entity;
 
-import com.cricklocal.enums.UserRole;
+import com.cricklocal.entity.UserRole;
 import jakarta.persistence.*;
 
 import java.time.Instant;
@@ -37,6 +37,10 @@ public class User {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private UserRole role;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private UserAccountStatus accountStatus = UserAccountStatus.ACTIVE;
 
     @Column(nullable = false)
     private Boolean active = true;
@@ -93,6 +97,14 @@ public class User {
 
     public void setRole(UserRole role) {
         this.role = role;
+    }
+
+    public UserAccountStatus getAccountStatus() {
+        return accountStatus;
+    }
+
+    public void setAccountStatus(UserAccountStatus accountStatus) {
+        this.accountStatus = accountStatus;
     }
 
     public Boolean getActive() {

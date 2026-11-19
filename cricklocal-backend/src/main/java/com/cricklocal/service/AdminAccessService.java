@@ -21,7 +21,9 @@ public class AdminAccessService {
     @Transactional(readOnly = true)
     public boolean hasActiveAdminAccess(User user) {
 
-        if (user == null || !Boolean.TRUE.equals(user.getActive())) {
+        if (user == null
+                || user.getAccountStatus() != com.cricklocal.entity.UserAccountStatus.ACTIVE
+                || !Boolean.TRUE.equals(user.getActive())) {
             return false;
         }
 
@@ -38,15 +40,20 @@ public class AdminAccessService {
             return false;
         }
 
-        if (entitlement.getExpiresAt() != null
-                && entitlement.getExpiresAt().isBefore(java.time.Instant.now())) {
+        java.time.Instant now = java.time.Instant.now();
 
+        if (entitlement.getStartsAt() != null
+                && entitlement.getStartsAt().isAfter(now)) {
+            return false;
+        }
+
+        if (entitlement.getExpiresAt() != null
+                && entitlement.getExpiresAt().isBefore(now)) {
             return false;
         }
 
         return true;
     }
-
     @Transactional
     public AdminEntitlement activateAdminAccess(
             User user,

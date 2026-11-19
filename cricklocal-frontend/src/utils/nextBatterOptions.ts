@@ -68,7 +68,7 @@ export function getNextBatterOptions<
       !dismissedPlayerIds.has(player.playerId);
 
     const isNewParticipant =
-      !currentlyAppearedPlayerIds.has(player.playerId);
+        !currentlyAppearedPlayerIds.has(player.playerId);
 
     const participantLimitReached =
       battingParticipantLimit != null &&

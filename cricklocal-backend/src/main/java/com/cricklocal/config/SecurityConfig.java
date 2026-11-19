@@ -2,11 +2,13 @@ package com.cricklocal.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.oauth2.client.web.AuthorizationRequestRepository;
 import org.springframework.security.oauth2.client.web.HttpSessionOAuth2AuthorizationRequestRepository;
 import org.springframework.security.oauth2.core.endpoint.OAuth2AuthorizationRequest;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -14,6 +16,7 @@ import org.springframework.security.oauth2.client.registration.ClientRegistratio
 import org.springframework.security.oauth2.client.web.DefaultOAuth2AuthorizationRequestResolver;
 import org.springframework.security.oauth2.client.web.OAuth2AuthorizationRequestResolver;
 
+@EnableMethodSecurity
 @Configuration
 public class SecurityConfig {
 
@@ -25,12 +28,15 @@ public class SecurityConfig {
 
     private final OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler;
     private final ClientRegistrationRepository clientRegistrationRepository;
+    private final AccountStatusAuthorizationFilter accountStatusAuthorizationFilter;
 
     public SecurityConfig(
                 OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler,
-                ClientRegistrationRepository clientRegistrationRepository) {
+                ClientRegistrationRepository clientRegistrationRepository,
+                AccountStatusAuthorizationFilter accountStatusAuthorizationFilter) {
         this.oAuth2LoginSuccessHandler = oAuth2LoginSuccessHandler;
         this.clientRegistrationRepository = clientRegistrationRepository;
+        this.accountStatusAuthorizationFilter = accountStatusAuthorizationFilter;
     }
 
     @Bean
@@ -96,6 +102,10 @@ public class SecurityConfig {
                         )
                 );
 
+        http.addFilterAfter(
+                accountStatusAuthorizationFilter,
+                SecurityContextHolderFilter.class
+        );
         return http.build();
     }
 
