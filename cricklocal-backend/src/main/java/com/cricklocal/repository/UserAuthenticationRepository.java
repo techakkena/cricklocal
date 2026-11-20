@@ -11,11 +11,5 @@ public interface UserAuthenticationRepository
 
     Optional<UserAuthentication> findByProviderAndProviderUserId(
             AuthenticationProvider provider,
-            String providerUserId
-    );
-
-    boolean existsByProviderAndProviderUserId(
-            AuthenticationProvider provider,
-            String providerUserId
-    );
+            String providerUserId);
 }

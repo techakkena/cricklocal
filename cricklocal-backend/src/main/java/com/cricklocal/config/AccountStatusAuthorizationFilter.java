@@ -1,10 +1,6 @@
 package com.cricklocal.config;
 
-import com.cricklocal.enums.AuthenticationProvider;
-import com.cricklocal.entity.User;
-import com.cricklocal.entity.UserAccountStatus;
-import com.cricklocal.entity.UserAuthentication;
-import com.cricklocal.repository.UserAuthenticationRepository;
+import com.cricklocal.service.AccountStatusService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -20,12 +16,11 @@ import java.io.IOException;
 @Component
 public class AccountStatusAuthorizationFilter extends OncePerRequestFilter {
 
-    private final UserAuthenticationRepository userAuthenticationRepository;
+    private final AccountStatusService accountStatusService;
 
     public AccountStatusAuthorizationFilter(
-            UserAuthenticationRepository userAuthenticationRepository) {
-        this.userAuthenticationRepository =
-                userAuthenticationRepository;
+            AccountStatusService accountStatusService) {
+        this.accountStatusService = accountStatusService;
     }
 
     @Override
@@ -45,34 +40,18 @@ public class AccountStatusAuthorizationFilter extends OncePerRequestFilter {
             String providerUserId =
                     oauth2User.getAttribute("sub");
 
-            if (providerUserId != null && !providerUserId.isBlank()) {
+            if (providerUserId != null
+                    && !providerUserId.isBlank()
+                    && accountStatusService.isBlocked(providerUserId)) {
 
-                UserAuthentication userAuthentication =
-                        userAuthenticationRepository
-                                .findByProviderAndProviderUserId(
-                                        AuthenticationProvider.GOOGLE,
-                                        providerUserId
-                                )
-                                .orElse(null);
+                SecurityContextHolder.clearContext();
 
-                if (userAuthentication != null) {
+                response.sendError(
+                        HttpServletResponse.SC_FORBIDDEN,
+                        "CricketLocal user account is blocked"
+                );
 
-                    User user = userAuthentication.getUser();
-
-                    if (user.getAccountStatus()
-                            == UserAccountStatus.BLOCKED
-                            || !Boolean.TRUE.equals(user.getActive())) {
-
-                        SecurityContextHolder.clearContext();
-
-                        response.sendError(
-                                HttpServletResponse.SC_FORBIDDEN,
-                                "CricketLocal user account is blocked"
-                        );
-
-                        return;
-                    }
-                }
+                return;
             }
         }
 
