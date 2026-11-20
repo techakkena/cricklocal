@@ -1,0 +1,48 @@
+package com.cricklocal.controller;
+
+import com.cricklocal.dto.MatchResultResponse;
+import com.cricklocal.service.MatchResultService;
+import com.cricklocal.service.ScoreOperatorAuthorizationService;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.web.bind.annotation.*;
+
+@RestController
+@RequestMapping("/api/matches")
+public class MatchResultController {
+
+    private final MatchResultService matchResultService;
+    private final ScoreOperatorAuthorizationService operatorAuthorizationService;
+
+    public MatchResultController(
+            MatchResultService matchResultService,
+            ScoreOperatorAuthorizationService operatorAuthorizationService) {
+        this.matchResultService = matchResultService;
+        this.operatorAuthorizationService = operatorAuthorizationService;
+    }
+
+    @PostMapping("/{matchId}/complete")
+    public MatchResultResponse completeMatch(
+            @PathVariable Long matchId,
+            @RequestHeader(
+                    name = "X-Score-Operator-Session",
+                    required = false) String sessionToken) {
+
+        operatorAuthorizationService.requireSessionForMatch(
+                sessionToken, matchId);
+
+        return matchResultService.completeMatch(matchId);
+    }
+
+    // Legacy result submission is intentionally disabled. Results must be
+    // calculated from completed innings and confirmed by the score operator.
+    @PostMapping("/{matchId}/result")
+    public MatchResultResponse recordResult(@PathVariable Long matchId) {
+        throw new UnsupportedOperationException(
+                "Submit match completion through POST /api/matches/{matchId}/complete");
+    }
+
+    @GetMapping("/{matchId}/result")
+    public MatchResultResponse getResult(@PathVariable Long matchId) {
+        return matchResultService.getResult(matchId);
+    }
+}
