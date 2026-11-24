@@ -3,9 +3,10 @@
 WORKDIR /app
 
 COPY pom.xml .
+COPY settings.xml .
 COPY src ./src
 
-RUN mvn clean package -DskipTests
+RUN mvn -s settings.xml clean package -DskipTests
 
 EXPOSE 8080
 
