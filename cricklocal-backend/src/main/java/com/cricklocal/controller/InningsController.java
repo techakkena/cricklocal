@@ -6,6 +6,7 @@ import com.cricklocal.service.InningsService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.util.List;
 
@@ -21,6 +22,7 @@ public class InningsController {
 
     @PostMapping("/{matchId}/innings")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'LIVE_SCORING', T(com.cricklocal.entity.PermissionAction).CREATE)")
     public InningsResponse startInnings(
             @PathVariable Long matchId,
             @Valid @RequestBody StartInningsRequest request) {
@@ -32,6 +34,7 @@ public class InningsController {
     }
 
     @GetMapping("/{matchId}/innings")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'LIVE_SCORING', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public List<InningsResponse> getMatchInnings(
             @PathVariable Long matchId) {
 
@@ -39,6 +42,7 @@ public class InningsController {
     }
 
     @GetMapping("/innings/{inningsId}")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'LIVE_SCORING', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public InningsResponse getInningsById(
             @PathVariable Long inningsId) {
 
@@ -46,6 +50,7 @@ public class InningsController {
     }
 
     @PostMapping("/innings/{inningsId}/declare")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'LIVE_SCORING', T(com.cricklocal.entity.PermissionAction).EDIT)")
     public InningsResponse declareInnings(
             @PathVariable Long inningsId) {
 
@@ -53,6 +58,7 @@ public class InningsController {
     }
 
     @PostMapping("/innings/{inningsId}/abandon")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'LIVE_SCORING', T(com.cricklocal.entity.PermissionAction).EDIT)")
     public InningsResponse abandonInnings(
             @PathVariable Long inningsId) {
 
