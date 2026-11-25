@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { usePermission } from "../hooks/usePermission";
 import PageBreadcrumb from "../components/common/PageBreadCrumb";
 import PageMeta from "../components/common/PageMeta";
 import Badge from "../components/ui/badge/Badge";
@@ -58,6 +59,9 @@ export default function GlobalPlayers() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [invitingPlayerId, setInvitingPlayerId] = useState<number | null>(null);
+  const { hasPermission } = usePermission();
+  const canViewRegistrations = hasPermission("PLAYER_REGISTRATIONS", "view");
+  const canEditRegistrations = hasPermission("PLAYER_REGISTRATIONS", "edit");
   const [registrationStatuses, setRegistrationStatuses] = useState<
     Record< number,
       {
@@ -75,10 +79,10 @@ export default function GlobalPlayers() {
         setLoading(true);
         setError("");
 
-        const [response, registrations] = await Promise.all([
-          getGlobalPlayers(),
-          getPlayerRegistrationManagement(),
-        ]);
+        const response = await getGlobalPlayers();
+        const registrations = canViewRegistrations
+          ? await getPlayerRegistrationManagement()
+          : [];
 
         const statusMap = Object.fromEntries(
           registrations.map((registration) => [
@@ -114,7 +118,7 @@ export default function GlobalPlayers() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [canViewRegistrations]);
 
   const filteredPlayers = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -141,6 +145,7 @@ export default function GlobalPlayers() {
   }, [players, search]);
 
     async function handleInvite(playerId: number) {
+      if (!canEditRegistrations) return;
       try {
         setInvitingPlayerId(playerId);
 
@@ -311,12 +316,14 @@ export default function GlobalPlayers() {
                       >
                         Registered
                       </TableCell>
-                      <TableCell
-                        isHeader
-                        className="px-4 py-3 text-start font-medium text-gray-500 text-theme-xs dark:text-gray-400"
-                      >
-                        Actions
-                      </TableCell>
+                      {canEditRegistrations && (
+                        <TableCell
+                          isHeader
+                          className="px-4 py-3 text-start font-medium text-gray-500 text-theme-xs dark:text-gray-400"
+                        >
+                          Actions
+                        </TableCell>
+                      )}
                     </TableRow>
                   </TableHeader>
 
@@ -367,7 +374,7 @@ export default function GlobalPlayers() {
                         <TableCell className="px-4 py-3 text-start text-gray-500 text-theme-sm dark:text-gray-400">
                           {formatCreatedDate(player.createdAt)}
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-start">
+                        {canEditRegistrations && <TableCell className="px-4 py-3 text-start">
                          <button
                             type="button"
                             onClick={() => handleInvite(player.id)}
@@ -386,7 +393,7 @@ export default function GlobalPlayers() {
                                   ? "Invitation Pending"
                                   : "Invite"}
                           </button>
-                        </TableCell>
+                        </TableCell>}
                           </TableRow>
                           );
                         })}
