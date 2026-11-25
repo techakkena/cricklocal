@@ -108,7 +108,9 @@ function AppContent() {
           path="/player-registrations"
           element={
             <AdminRoute>
-              <PlayerRegistrations />
+              <PermissionRoute moduleKey="PLAYER_REGISTRATIONS">
+                <PlayerRegistrations />
+              </PermissionRoute>
             </AdminRoute>
           }
         />
@@ -130,30 +132,36 @@ function AppContent() {
         <Route
           path="/matches/upcoming"
           element={
-            <PlaceholderPage
+            <PermissionRoute moduleKey="MATCH_CENTER">
+              <PlaceholderPage
               title="Upcoming Matches"
               description="View scheduled and upcoming matches."
             />
+            </PermissionRoute>
           }
         />
 
         <Route
           path="/matches/live"
           element={
-            <PlaceholderPage
+            <PermissionRoute moduleKey="MATCH_CENTER">
+              <PlaceholderPage
               title="Live Matches"
               description="View matches currently in progress."
             />
+            </PermissionRoute>
           }
         />
 
         <Route
           path="/matches/history"
           element={
-            <PlaceholderPage
+            <PermissionRoute moduleKey="HISTORY">
+              <PlaceholderPage
               title="Match History"
               description="Browse completed and historical matches."
             />
+            </PermissionRoute>
           }
         />
 
@@ -186,40 +194,48 @@ function AppContent() {
         <Route
           path="/statistics/batting"
           element={
-            <PlaceholderPage
+            <PermissionRoute moduleKey="STATISTICS">
+              <PlaceholderPage
               title="Batting Statistics"
               description="Explore batting statistics and performance."
             />
+            </PermissionRoute>
           }
         />
 
         <Route
           path="/statistics/bowling"
           element={
-            <PlaceholderPage
+            <PermissionRoute moduleKey="STATISTICS">
+              <PlaceholderPage
               title="Bowling Statistics"
               description="Explore bowling statistics and performance."
             />
+            </PermissionRoute>
           }
         />
 
         <Route
           path="/statistics/fielding"
           element={
-            <PlaceholderPage
+            <PermissionRoute moduleKey="STATISTICS">
+              <PlaceholderPage
               title="Fielding Statistics"
               description="Explore fielding statistics and performance."
             />
+            </PermissionRoute>
           }
         />
 
         <Route
           path="/statistics/leaderboards"
           element={
-            <PlaceholderPage
+            <PermissionRoute moduleKey="LEADERBOARDS">
+              <PlaceholderPage
               title="Leaderboards"
               description="View CricketLocal player leaderboards."
             />
+            </PermissionRoute>
           }
         />
 
@@ -227,30 +243,36 @@ function AppContent() {
         <Route
           path="/history/matches"
           element={
-            <PlaceholderPage
+            <PermissionRoute moduleKey="HISTORY">
+              <PlaceholderPage
               title="Match History"
               description="Browse CricketLocal match history."
             />
+            </PermissionRoute>
           }
         />
 
         <Route
           path="/history/players"
           element={
-            <PlaceholderPage
+            <PermissionRoute moduleKey="HISTORY">
+              <PlaceholderPage
               title="Player History"
               description="Browse player match history and career activity."
             />
+            </PermissionRoute>
           }
         />
 
         <Route
           path="/history/teams"
           element={
-            <PlaceholderPage
+            <PermissionRoute moduleKey="HISTORY">
+              <PlaceholderPage
               title="Team History"
               description="Browse team history and past performances."
             />
+            </PermissionRoute>
           }
         />
 
@@ -258,10 +280,12 @@ function AppContent() {
         <Route
           path="/settings"
           element={
-            <PlaceholderPage
+            <PermissionRoute moduleKey="SETTINGS">
+              <PlaceholderPage
               title="Settings"
               description="Configure CricketLocal application settings."
             />
+            </PermissionRoute>
           }
         />
       </Route>
