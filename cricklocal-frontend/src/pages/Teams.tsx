@@ -556,6 +556,7 @@ const otherTeamsForSelectedPlayer = selectedPlayer?.teams.filter(
                 Download Excel Template
               </a>
 
+              {canCreateTeam && (
               <button
                 type="button"
                 onClick={openImportModal}
@@ -563,6 +564,7 @@ const otherTeamsForSelectedPlayer = selectedPlayer?.teams.filter(
               >
                 Upload Excel
               </button>
+            )}
 
               {canCreateTeam && (
                 <button
