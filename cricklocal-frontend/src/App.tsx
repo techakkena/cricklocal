@@ -37,6 +37,7 @@ import PlayerRegistrationConfirm from "./pages/AuthPages/PlayerRegistrationConfi
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import AdminRoute from "./components/auth/AdminRoute";
 import SuperAdminRoute from "./components/auth/SuperAdminRoute";
+import PermissionRoute from "./components/auth/PermissionRoute";
 import SuperAdminUserPermissions from "./pages/SuperAdminUserPermissions";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -98,10 +99,10 @@ function AppContent() {
         />
 
         {/* Manage */}
-        <Route path="/teams" element={<Teams />} />
-        <Route path="/players" element={<Players />} />
-        <Route path="/global-players" element={<GlobalPlayers />} />
-        <Route path="/local-players" element={<LocalPlayers />} />
+        <Route path="/teams" element={<PermissionRoute moduleKey="TEAMS"><Teams /></PermissionRoute>} />
+        <Route path="/players" element={<PermissionRoute moduleKey="PLAYERS"><Players /></PermissionRoute>} />
+        <Route path="/global-players" element={<PermissionRoute moduleKey="GLOBAL_PLAYERS"><GlobalPlayers /></PermissionRoute>} />
+        <Route path="/local-players" element={<PermissionRoute moduleKey="LOCAL_PLAYERS"><LocalPlayers /></PermissionRoute>} />
 
         <Route
           path="/player-registrations"
@@ -112,17 +113,17 @@ function AppContent() {
           }
         />
 
-        <Route path="/series" element={<Series />} />
-        <Route path="/matches" element={<Matches />} />
+        <Route path="/series" element={<PermissionRoute moduleKey="SERIES"><Series /></PermissionRoute>} />
+        <Route path="/matches" element={<PermissionRoute moduleKey="MATCHES"><Matches /></PermissionRoute>} />
 
         <Route
           path="/matches/:matchId"
-          element={<MatchPreparation />}
+          element={<PermissionRoute moduleKey="MATCH_PREPARATION"><MatchPreparation /></PermissionRoute>}
         />
 
         <Route
           path="/scorecards/:matchId"
-          element={<ScorecardDetails />}
+          element={<PermissionRoute moduleKey="SCORECARDS"><ScorecardDetails /></PermissionRoute>}
         />
 
         {/* Match Center */}
@@ -160,20 +161,24 @@ function AppContent() {
         <Route
           path="/live-scoring"
           element={
-            <PlaceholderPage
-              title="Live Scoring"
-              description="Record ball-by-ball cricket scoring."
-            />
+            <PermissionRoute moduleKey="LIVE_SCORING">
+              <PlaceholderPage
+                title="Live Scoring"
+                description="Record ball-by-ball cricket scoring."
+              />
+            </PermissionRoute>
           }
         />
 
         <Route
           path="/scorecards"
           element={
-            <PlaceholderPage
-              title="Scorecards"
-              description="View complete match scorecards and results."
-            />
+            <PermissionRoute moduleKey="SCORECARDS">
+              <PlaceholderPage
+                title="Scorecards"
+                description="View complete match scorecards and results."
+              />
+            </PermissionRoute>
           }
         />
 
