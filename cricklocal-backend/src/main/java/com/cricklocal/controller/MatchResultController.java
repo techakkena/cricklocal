@@ -5,6 +5,7 @@ import com.cricklocal.service.MatchResultService;
 import com.cricklocal.service.ScoreOperatorAuthorizationService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
@@ -43,6 +44,7 @@ public class MatchResultController {
     }
 
     @GetMapping("/{matchId}/result")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'MATCHES', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public MatchResultResponse getResult(@PathVariable Long matchId) {
         return matchResultService.getResult(matchId);
     }
