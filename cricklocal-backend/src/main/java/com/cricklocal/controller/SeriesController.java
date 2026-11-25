@@ -9,6 +9,7 @@ import com.cricklocal.service.SeriesService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 import com.cricklocal.dto.AddTeamToSeriesRequest;
 
 import java.util.List;
@@ -31,6 +32,7 @@ public class SeriesController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'SERIES', T(com.cricklocal.entity.PermissionAction).CREATE)")
     public SeriesResponse createSeries(
             @Valid @RequestBody CreateSeriesRequest request) {
 
@@ -38,11 +40,13 @@ public class SeriesController {
     }
 
     @GetMapping
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'SERIES', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public List<SeriesResponse> getAllSeries() {
         return seriesService.getAllSeries();
     }
 
     @GetMapping("/{seriesId}")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'SERIES', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public SeriesResponse getSeriesById(
             @PathVariable Long seriesId) {
 
@@ -51,6 +55,7 @@ public class SeriesController {
 
     @PostMapping("/{seriesId}/teams")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'SERIES', T(com.cricklocal.entity.PermissionAction).EDIT)")
     public SeriesResponse addTeamToSeries(
             @PathVariable Long seriesId,
             @Valid @RequestBody AddTeamToSeriesRequest request) {
@@ -60,6 +65,7 @@ public class SeriesController {
 
     @PostMapping("/{seriesId}/players")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'SERIES', T(com.cricklocal.entity.PermissionAction).EDIT)")
     public void addPlayerToSeries(
             @PathVariable Long seriesId,
             @Valid @RequestBody AddPlayerToSeriesRequest request) {
@@ -71,6 +77,7 @@ public class SeriesController {
     }
 
     @GetMapping("/{seriesId}/players")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'SERIES', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public List<SeriesParticipationResponse> getSeriesParticipants(
             @PathVariable Long seriesId) {
 
@@ -79,6 +86,7 @@ public class SeriesController {
 
     @DeleteMapping("/{seriesId}/players/{playerId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'SERIES', T(com.cricklocal.entity.PermissionAction).DELETE)")
     public void removePlayerFromSeries(
             @PathVariable Long seriesId,
             @PathVariable Long playerId) {
