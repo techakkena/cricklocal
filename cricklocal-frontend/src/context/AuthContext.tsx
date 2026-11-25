@@ -1,10 +1,5 @@
 import type React from "react";
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-} from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { apiGet } from "../api/apiClient";
 
 export interface PlayerProfile {
@@ -15,6 +10,17 @@ export interface PlayerProfile {
 
 export interface AdminAccess {
   active: boolean;
+  superAdmin: boolean;
+}
+
+export interface UserPermission {
+  moduleKey: string;
+  moduleName: string;
+  view: boolean;
+  create: boolean;
+  edit: boolean;
+  delete: boolean;
+  approve: boolean;
 }
 
 export interface CurrentUser {
@@ -25,6 +31,7 @@ export interface CurrentUser {
   active: boolean;
   playerProfile: PlayerProfile;
   adminAccess: AdminAccess;
+  permissions: UserPermission[];
 }
 
 interface AuthContextType {
@@ -36,17 +43,13 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
-  children,
-}) => {
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<CurrentUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadUser = async () => {
     try {
-      const currentUser =
-        await apiGet<CurrentUser>("/api/auth/me");
-
+      const currentUser = await apiGet<CurrentUser>("/api/auth/me");
       setUser(currentUser);
     } catch (error) {
       console.error("Failed to load CricketLocal user:", error);
@@ -70,14 +73,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   };
 
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        refreshUser,
-        clearUser,
-      }}
-    >
+    <AuthContext.Provider value={{ user, loading, refreshUser, clearUser }}>
       {children}
     </AuthContext.Provider>
   );
@@ -85,10 +81,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-
   if (context === undefined) {
     throw new Error("useAuth must be used within an AuthProvider");
   }
-
   return context;
 };
