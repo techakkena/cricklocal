@@ -164,6 +164,7 @@ public class PlayerController {
     }
 
     @GetMapping("/registrations")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'PLAYER_REGISTRATIONS', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public List<PlayerRegistrationManagementResponse> getPlayerRegistrations(
             Authentication authentication) {
 
@@ -190,6 +191,7 @@ public class PlayerController {
     }
 
     @GetMapping("/registrations/summary")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'PLAYER_REGISTRATIONS', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public PlayerRegistrationSummaryResponse getPlayerRegistrationSummary(
             Authentication authentication) {
 
@@ -219,6 +221,7 @@ public class PlayerController {
     }
 
     @GetMapping("/registrations/{playerId}")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'PLAYER_REGISTRATIONS', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public PlayerRegistrationDetailResponse getPlayerRegistrationDetail(
             @PathVariable Long playerId,
             Authentication authentication) {
@@ -250,6 +253,7 @@ public class PlayerController {
     }
 
     @PostMapping("/registrations/{playerId}/regenerate")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'PLAYER_REGISTRATIONS', T(com.cricklocal.entity.PermissionAction).EDIT)")
     public PlayerRegistrationRegenerateResponse regeneratePlayerRegistration(
             @PathVariable Long playerId,
             Authentication authentication) {
@@ -282,6 +286,7 @@ public class PlayerController {
     }
 
     @PostMapping("/registrations/{playerId}/invite")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'PLAYER_REGISTRATIONS', T(com.cricklocal.entity.PermissionAction).EDIT)")
     public PlayerRegistrationRegenerateResponse invitePlayerRegistration(
                 @PathVariable Long playerId,
                 Authentication authentication) {
@@ -317,6 +322,7 @@ public class PlayerController {
             value = "/registrations/export",
             produces = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'PLAYER_REGISTRATIONS', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public ResponseEntity<byte[]> exportPlayerRegistrations(
             Authentication authentication) {
 
@@ -368,6 +374,7 @@ public class PlayerController {
     }
 
     @GetMapping("/registrations/{playerId}/link")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'PLAYER_REGISTRATIONS', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public PlayerRegistrationLinkResponse getPlayerRegistrationLink(
             @PathVariable Long playerId,
             Authentication authentication) {
@@ -409,6 +416,7 @@ public class PlayerController {
     @PostMapping("/registrations/backfill-invitations")
     public PlayerRegistrationInvitationBackfillService
                 .PlayerRegistrationInvitationBackfillResponse
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'PLAYER_REGISTRATIONS', T(com.cricklocal.entity.PermissionAction).EDIT)")
                 backfillPlayerRegistrationInvitations(
                         Authentication authentication) {
 
