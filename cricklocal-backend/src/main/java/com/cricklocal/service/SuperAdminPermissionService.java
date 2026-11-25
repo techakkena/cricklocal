@@ -22,16 +22,19 @@ public class SuperAdminPermissionService {
     private final PermissionModuleRepository moduleRepository;
     private final UserPermissionOverrideRepository overrideRepository;
     private final PermissionService permissionService;
+    private final SuperAdminAuthorizationService superAdminAuthorizationService;
 
     public SuperAdminPermissionService(
             UserRepository userRepository,
             PermissionModuleRepository moduleRepository,
             UserPermissionOverrideRepository overrideRepository,
-            PermissionService permissionService) {
+            PermissionService permissionService,
+            SuperAdminAuthorizationService superAdminAuthorizationService) {
         this.userRepository = userRepository;
         this.moduleRepository = moduleRepository;
         this.overrideRepository = overrideRepository;
         this.permissionService = permissionService;
+        this.superAdminAuthorizationService = superAdminAuthorizationService;
     }
 
     @Transactional(readOnly = true)
@@ -105,11 +108,7 @@ public class SuperAdminPermissionService {
                     "Super Admin permissions cannot be reset");
         }
 
-        overrideRepository.deleteAll(
-                overrideRepository.findAll().stream()
-                        .filter(o -> o.getUser().getId().equals(userId))
-                        .toList()
-        );
+        overrideRepository.deleteByUserId(userId);
 
         return getUserPermissions(userId);
     }
@@ -130,9 +129,6 @@ public class SuperAdminPermissionService {
     }
 
     private boolean isSuperAdmin(User user) {
-        return user.getRole().name().equals("SUPER_ADMIN")
-                || permissionService.hasPermission(user, "SETTINGS",
-                com.cricklocal.entity.PermissionAction.VIEW)
-                && false;
+        return superAdminAuthorizationService.isSuperAdmin(user);
     }
 }
