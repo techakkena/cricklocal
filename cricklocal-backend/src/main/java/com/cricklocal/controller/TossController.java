@@ -6,6 +6,7 @@ import com.cricklocal.service.TossService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 @RestController
 @RequestMapping("/api/matches")
@@ -18,6 +19,7 @@ public class TossController {
     }
 
     @PostMapping("/{matchId}/toss")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'MATCH_PREPARATION', T(com.cricklocal.entity.PermissionAction).EDIT)")
     @ResponseStatus(HttpStatus.CREATED)
     public TossResponse recordToss(
             @PathVariable Long matchId,
@@ -27,6 +29,7 @@ public class TossController {
     }
 
     @GetMapping("/{matchId}/toss")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'MATCH_PREPARATION', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public TossResponse getToss(
             @PathVariable Long matchId) {
 
