@@ -36,6 +36,8 @@ import PlayerRegistrationConfirm from "./pages/AuthPages/PlayerRegistrationConfi
 
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import AdminRoute from "./components/auth/AdminRoute";
+import SuperAdminRoute from "./components/auth/SuperAdminRoute";
+import SuperAdminUserPermissions from "./pages/SuperAdminUserPermissions";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -85,6 +87,15 @@ function AppContent() {
         <Route path="/" element={<Home />} />
 
         <Route path="/profile" element={<UserProfiles />} />
+
+        <Route
+          path="/super-admin/user-permissions"
+          element={
+            <SuperAdminRoute>
+              <SuperAdminUserPermissions />
+            </SuperAdminRoute>
+          }
+        />
 
         {/* Manage */}
         <Route path="/teams" element={<Teams />} />
