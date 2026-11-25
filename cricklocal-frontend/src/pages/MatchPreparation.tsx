@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { usePermission } from "../hooks/usePermission";
 import { Link, useParams } from "react-router";
 import PageBreadcrumb from "../components/common/PageBreadCrumb";
 import PageMeta from "../components/common/PageMeta";
@@ -44,6 +45,12 @@ type TeamState = {
 export default function MatchPreparation() {
   const { matchId } = useParams<{ matchId: string }>();
   const numericMatchId = Number(matchId);
+  const { hasPermission } = usePermission();
+  const canEditMatchPreparation = hasPermission("MATCH_PREPARATION", "edit");
+  const canCreateLiveScoring = hasPermission("LIVE_SCORING", "create");
+  const canDeleteLiveScoring = hasPermission("LIVE_SCORING", "delete");
+  const canCreateScorecardAccess = hasPermission("SCORECARDS", "create");
+  const canDeleteScorecardAccess = hasPermission("SCORECARDS", "delete");
 
   const [match, setMatch] = useState<MatchResponse | null>(null);
   const [players, setPlayers] = useState<PlayerResponse[]>([]);
@@ -556,6 +563,7 @@ export default function MatchPreparation() {
   }
 
   async function handleRecordToss() {
+    if (!canEditMatchPreparation) return;
     if (!tossWinnerId || !tossDecision) {
       setError("Please select the toss-winning team and decision.");
       return;
@@ -583,6 +591,7 @@ export default function MatchPreparation() {
   }
 
   async function handleGenerateOperatorAccess() {
+    if (!canCreateLiveScoring) return;
     try {
       setGeneratingOperatorAccess(true);
       setError("");
@@ -604,6 +613,7 @@ export default function MatchPreparation() {
   }
 
   async function handleGenerateDisplayAccess() {
+    if (!canCreateScorecardAccess) return;
     try {
       setError("");
       setCopiedDisplayAccess(false);
@@ -622,6 +632,7 @@ export default function MatchPreparation() {
   }
 
   async function handleRevokeOperatorAccess() {
+    if (!canDeleteLiveScoring) return;
     try {
       setRevokingOperatorAccess(true);
       setError("");
@@ -642,6 +653,7 @@ export default function MatchPreparation() {
   }
 
   async function handleRevokeDisplayAccess() {
+    if (!canDeleteScorecardAccess) return;
     try {
       setRevokingDisplayAccess(true);
       setError("");
@@ -662,6 +674,7 @@ export default function MatchPreparation() {
   }
 
   async function handleStartFirstInnings() {
+    if (!canCreateLiveScoring) return;
     if (!bothFinalized) {
       setError("Both teams must finalize their Playing XI first.");
       return;
@@ -920,6 +933,7 @@ export default function MatchPreparation() {
                               checked={playing}
                               disabled={
                                 isFinalized ||
+                                !canEditMatchPreparation ||
                                 savingPlayer === player.id
                               }
                               onChange={() =>
@@ -977,7 +991,7 @@ export default function MatchPreparation() {
 
                       <select
                         value={captains[team.teamId] ?? ""}
-                        disabled={isFinalized}
+                        disabled={isFinalized || !canEditMatchPreparation}
                         onChange={(event) => {
                           const playerId = Number(event.target.value);
 
@@ -1015,7 +1029,7 @@ export default function MatchPreparation() {
 
                       <select
                         value={wicketKeepers[team.teamId] ?? ""}
-                        disabled={isFinalized}
+                        disabled={isFinalized || !canEditMatchPreparation}
                         onChange={(event) => {
                           const playerId = Number(event.target.value);
 
@@ -1281,6 +1295,7 @@ export default function MatchPreparation() {
                 <button
                   type="button"
                   disabled={
+                    !canEditMatchPreparation ||
                     !bothFinalized ||
                     !tossWinnerId ||
                     !tossDecision ||
@@ -1352,7 +1367,7 @@ export default function MatchPreparation() {
               <button
                 type="button"
                 onClick={() => void handleStartFirstInnings()}
-                disabled={startingInnings}
+                disabled={!canCreateLiveScoring || startingInnings}
                 className="inline-flex h-11 items-center justify-center rounded-lg bg-success-600 px-5 text-sm font-semibold text-white shadow-sm transition hover:bg-success-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {startingInnings
@@ -1388,7 +1403,7 @@ export default function MatchPreparation() {
             <div className="mt-5">
               <Button
                 onClick={() => void handleGenerateOperatorAccess()}
-                disabled={generatingOperatorAccess}
+                disabled={!canCreateLiveScoring || generatingOperatorAccess}
               >
                 {generatingOperatorAccess
                   ? "Generating..."
@@ -1472,7 +1487,7 @@ export default function MatchPreparation() {
                   size="sm"
                   variant="outline"
                   onClick={() => void handleRevokeOperatorAccess()}
-                  disabled={revokingOperatorAccess}
+                  disabled={!canDeleteLiveScoring || revokingOperatorAccess}
                   className="text-error-600 ring-error-300 hover:bg-error-50"
                 >
                   {revokingOperatorAccess
@@ -1509,6 +1524,7 @@ export default function MatchPreparation() {
               <Button
                 size="sm"
                 onClick={() => void handleGenerateDisplayAccess()}
+                disabled={!canCreateScorecardAccess}
               >
                 Generate Public Display Link
               </Button>
@@ -1562,7 +1578,7 @@ export default function MatchPreparation() {
                   size="sm"
                   variant="outline"
                   onClick={() => void handleRevokeDisplayAccess()}
-                  disabled={revokingDisplayAccess}
+                  disabled={!canDeleteScorecardAccess || revokingDisplayAccess}
                   className="text-error-600 ring-error-300 hover:bg-error-50"
                 >
                   {revokingDisplayAccess
