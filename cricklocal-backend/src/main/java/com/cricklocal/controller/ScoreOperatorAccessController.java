@@ -15,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 @RestController
 @RequestMapping("/api/matches")
@@ -39,6 +40,7 @@ public class ScoreOperatorAccessController {
 
     @PostMapping("/{matchId}/score-operator/access")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'LIVE_SCORING', T(com.cricklocal.entity.PermissionAction).CREATE)")
     public GenerateScoreOperatorAccessResponse generateAccess(
             @PathVariable Long matchId,
             Authentication authentication
@@ -82,6 +84,7 @@ public class ScoreOperatorAccessController {
 
     @DeleteMapping("/{matchId}/score-operator/access")
     @ResponseStatus(HttpStatus.NO_CONTENT)
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'LIVE_SCORING', T(com.cricklocal.entity.PermissionAction).DELETE)")
     public void revokeAccess(
             @PathVariable Long matchId,
             Authentication authentication
