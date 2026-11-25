@@ -1066,6 +1066,7 @@ export default function MatchPreparation() {
                   <button
                     type="button"
                     disabled={
+                      !canEditMatchPreparation ||
                       isFinalized ||
                       finalizingTeam === team.teamId ||
                       (match?.format === "CUSTOM"
