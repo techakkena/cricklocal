@@ -91,6 +91,11 @@ const othersItems: NavItem[] = [
     name: "Settings",
     path: "/settings",
   },
+  {
+    icon: <BoxIcon />,
+    name: "User Permissions",
+    path: "/super-admin/user-permissions",
+  },
 ];
 
 const AppSidebar: React.FC = () => {
