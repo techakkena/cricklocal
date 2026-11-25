@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import PageBreadcrumb from "../components/common/PageBreadCrumb";
 import PageMeta from "../components/common/PageMeta";
+import { usePermission } from "../hooks/usePermission";
 import Badge from "../components/ui/badge/Badge";
 import Button from "../components/ui/button/Button";
 import { Modal } from "../components/ui/modal";
@@ -84,6 +85,9 @@ export default function Players() {
   const [players, setPlayers] = useState<PlayerResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const { hasPermission } = usePermission();
+  const canCreatePlayer = hasPermission("PLAYERS", "create");
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [form, setForm] = useState<CreatePlayerRequest>(initialForm);
@@ -356,9 +360,11 @@ export default function Players() {
               Upload Excel
             </button>
 
-            <Button size="sm" onClick={openCreateModal}>
-              + Add Player
-            </Button>
+            {canCreatePlayer && (
+              <Button size="sm" onClick={openCreateModal}>
+                + Add Player
+              </Button>
+            )}
           </div>
         </div>
 
@@ -411,9 +417,11 @@ export default function Players() {
               </p>
 
               <div className="mt-4">
-                <Button size="sm" onClick={openCreateModal}>
-                  + Add Player
-                </Button>
+                {canCreatePlayer && (
+                  <Button size="sm" onClick={openCreateModal}>
+                    + Add Player
+                  </Button>
+                )}
               </div>
             </div>
           ) : (
