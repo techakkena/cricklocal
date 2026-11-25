@@ -352,13 +352,15 @@ export default function Players() {
               Download Excel Template
             </a>
 
-            <button
-              type="button"
-              onClick={openImportModal}
-              className="inline-flex h-10 items-center justify-center rounded-lg border border-brand-500 px-4 text-sm font-medium text-brand-600 transition hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
-            >
-              Upload Excel
-            </button>
+            {canCreatePlayer && (
+              <button
+                type="button"
+                onClick={openImportModal}
+                className="inline-flex h-10 items-center justify-center rounded-lg border border-brand-500 px-4 text-sm font-medium text-brand-600 transition hover:bg-brand-50 dark:text-brand-400 dark:hover:bg-brand-500/10"
+              >
+                Upload Excel
+              </button>
+            )}
 
             {canCreatePlayer && (
               <Button size="sm" onClick={openCreateModal}>
