@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import PageBreadcrumb from "../components/common/PageBreadCrumb";
 import PageMeta from "../components/common/PageMeta";
+import { usePermission } from "../hooks/usePermission";
 import Badge from "../components/ui/badge/Badge";
 import { Modal } from "../components/ui/modal";
 import {
@@ -45,6 +46,10 @@ export default function Teams() {
   const [teams, setTeams] = useState<TeamResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const { hasPermission } = usePermission();
+  const canCreateTeam = hasPermission("TEAMS", "create");
+  const canEditTeam = hasPermission("TEAMS", "edit");
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -559,13 +564,15 @@ const otherTeamsForSelectedPlayer = selectedPlayer?.teams.filter(
                 Upload Excel
               </button>
 
-              <button
-                type="button"
-                onClick={openCreateModal}
-                className="inline-flex items-center justify-center rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-brand-600"
-              >
-                + Create Team
-              </button>
+              {canCreateTeam && (
+                <button
+                  type="button"
+                  onClick={openCreateModal}
+                  className="inline-flex items-center justify-center rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-brand-600"
+                >
+                  + Create Team
+                </button>
+              )}
             </div>
           </div>
 
@@ -761,7 +768,7 @@ const otherTeamsForSelectedPlayer = selectedPlayer?.teams.filter(
                         <input id="team-player-jersey" type="number" min="0" max="99" value={jerseyNumber} onChange={(event) => setJerseyNumber(event.target.value)} disabled={addingPlayer} placeholder="0–99" className="h-11 w-full rounded-lg border border-gray-300 bg-transparent px-4 text-sm text-gray-800 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90" />
                       </div>
                       <div className="flex items-end">
-                        <button type="button" onClick={handleAddPlayerToTeam} disabled={addingPlayer || removingPlayerId !== null || !selectedPlayerId || jerseyNumber.trim() === ""} className="h-11 w-full rounded-lg bg-brand-500 px-5 text-sm font-medium text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">
+                        <button type="button" onClick={handleAddPlayerToTeam} disabled={!canEditTeam || addingPlayer || removingPlayerId !== null || !selectedPlayerId || jerseyNumber.trim() === ""} className="h-11 w-full rounded-lg bg-brand-500 px-5 text-sm font-medium text-white transition hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">
                           {addingPlayer ? "Adding..." : "Add Player"}
                         </button>
                       </div>
