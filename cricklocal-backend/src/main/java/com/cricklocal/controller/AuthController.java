@@ -1,9 +1,11 @@
 package com.cricklocal.controller;
 
+import com.cricklocal.dto.EffectivePermissionResponse;
 import com.cricklocal.entity.Player;
 import com.cricklocal.entity.User;
 import com.cricklocal.service.AdminAccessService;
 import com.cricklocal.service.AuthenticationService;
+import com.cricklocal.service.PermissionService;
 import com.cricklocal.service.SuperAdminAuthorizationService;
 import com.cricklocal.repository.PlayerRepository;
 import org.springframework.http.ResponseEntity;
@@ -11,31 +13,31 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
+import java.util.List;
 
 @RestController
 public class AuthController {
-
     private final AuthenticationService authenticationService;
     private final PlayerRepository playerRepository;
     private final AdminAccessService adminAccessService;
     private final SuperAdminAuthorizationService superAdminAuthorizationService;
+    private final PermissionService permissionService;
 
     public AuthController(
             AuthenticationService authenticationService,
             PlayerRepository playerRepository,
             AdminAccessService adminAccessService,
-            SuperAdminAuthorizationService superAdminAuthorizationService
-    ) {
+            SuperAdminAuthorizationService superAdminAuthorizationService,
+            PermissionService permissionService) {
         this.authenticationService = authenticationService;
         this.playerRepository = playerRepository;
         this.adminAccessService = adminAccessService;
         this.superAdminAuthorizationService = superAdminAuthorizationService;
+        this.permissionService = permissionService;
     }
 
     @GetMapping("/api/auth/me")
-    public ResponseEntity<AuthUserResponse> currentUser(
-            Authentication authentication
-    ) {
+    public ResponseEntity<AuthUserResponse> currentUser(Authentication authentication) {
         if (authentication == null
                 || !authentication.isAuthenticated()
                 || !(authentication.getPrincipal() instanceof OAuth2User oauth2User)) {
@@ -43,64 +45,45 @@ public class AuthController {
         }
 
         User user = authenticationService.getUserForGoogleLogin(oauth2User);
-
         Player player = playerRepository.findByUser(user).orElse(null);
-
         boolean hasPlayerProfile = player != null;
+        boolean hasActiveAdminAccess = adminAccessService.hasActiveAdminAccess(user);
+        boolean isSuperAdmin = superAdminAuthorizationService.isSuperAdmin(authentication);
 
-        boolean hasActiveAdminAccess =
-                adminAccessService.hasActiveAdminAccess(user);
-
-        boolean isSuperAdmin =
-                superAdminAuthorizationService.isSuperAdmin(authentication);
-
-        PlayerProfileResponse playerProfile =
-                new PlayerProfileResponse(
-                        hasPlayerProfile,
-                        hasPlayerProfile ? player.getId() : null,
-                        hasPlayerProfile
-                                && player.getRegistrationStatus() != null
-                                ? player.getRegistrationStatus().name()
-                                : null
-                );
+        PlayerProfileResponse playerProfile = new PlayerProfileResponse(
+                hasPlayerProfile,
+                hasPlayerProfile ? player.getId() : null,
+                hasPlayerProfile && player.getRegistrationStatus() != null
+                        ? player.getRegistrationStatus().name()
+                        : null
+        );
 
         AdminAccessResponse adminAccess =
-                new AdminAccessResponse(
-                        hasActiveAdminAccess,
-                        isSuperAdmin
-                );
+                new AdminAccessResponse(hasActiveAdminAccess, isSuperAdmin);
 
-        return ResponseEntity.ok(
-                new AuthUserResponse(
-                        user.getId(),
-                        user.getEmail(),
-                        user.getDisplayName(),
-                        user.getRole().name(),
-                        user.getActive(),
-                        playerProfile,
-                        adminAccess
-                )
-        );
+        List<EffectivePermissionResponse> permissions =
+                permissionService.getEffectivePermissions(user);
+
+        return ResponseEntity.ok(new AuthUserResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getDisplayName(),
+                user.getRole().name(),
+                user.getActive(),
+                playerProfile,
+                adminAccess,
+                permissions
+        ));
     }
 
     public record AuthUserResponse(
-            Long id,
-            String email,
-            String displayName,
-            String role,
-            Boolean active,
-            PlayerProfileResponse playerProfile,
-            AdminAccessResponse adminAccess
-    ) {}
+            Long id, String email, String displayName, String role, Boolean active,
+            PlayerProfileResponse playerProfile, AdminAccessResponse adminAccess,
+            List<EffectivePermissionResponse> permissions) {}
 
     public record PlayerProfileResponse(
-            Boolean exists,
-            Long playerId,
-            String registrationStatus
-    ) {}
+            Boolean exists, Long playerId, String registrationStatus) {}
 
     public record AdminAccessResponse(
-            Boolean active,
-            Boolean superAdmin
-    ) {}
+            Boolean active, Boolean superAdmin) {}
 }
