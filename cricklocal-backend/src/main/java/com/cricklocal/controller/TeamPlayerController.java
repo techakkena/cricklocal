@@ -13,6 +13,7 @@ import com.cricklocal.repository.TeamRepository;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.time.Instant;
 import java.util.List;
@@ -40,6 +41,7 @@ public class TeamPlayerController {
     }
 
     @PostMapping("/{teamId}/players/{playerId}")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'TEAMS', T(com.cricklocal.entity.PermissionAction).EDIT)")
     @ResponseStatus(HttpStatus.CREATED)
     public TeamRosterPlayerResponse addPlayerToTeam(
             @PathVariable Long teamId,
@@ -160,6 +162,7 @@ public class TeamPlayerController {
     }
 
     @GetMapping("/{teamId}/players")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'TEAMS', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public List<TeamRosterPlayerResponse> getTeamPlayers(
             @PathVariable Long teamId) {
 
@@ -175,6 +178,7 @@ public class TeamPlayerController {
     }
 
     @GetMapping("/{teamId}/captain")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'TEAMS', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public TeamCaptainResponse getCaptain(
             @PathVariable Long teamId) {
 
@@ -207,6 +211,7 @@ public class TeamPlayerController {
     }
 
     @DeleteMapping("/{teamId}/players/{playerId}")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'TEAMS', T(com.cricklocal.entity.PermissionAction).DELETE)")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void removePlayerFromTeam(
             @PathVariable Long teamId,
@@ -268,6 +273,7 @@ public class TeamPlayerController {
     }
 
     @PutMapping("/{teamId}/captain/{playerId}")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'TEAMS', T(com.cricklocal.entity.PermissionAction).EDIT)")
     public TeamCaptainResponse setCaptain(
             @PathVariable Long teamId,
             @PathVariable Long playerId) {
