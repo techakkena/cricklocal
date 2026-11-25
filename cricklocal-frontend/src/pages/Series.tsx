@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import PageBreadcrumb from "../components/common/PageBreadCrumb";
 import PageMeta from "../components/common/PageMeta";
+import { usePermission } from "../hooks/usePermission";
 import Badge from "../components/ui/badge/Badge";
 import { Modal } from "../components/ui/modal";
 import { getGlobalPlayers } from "../api/playersApi";
@@ -78,6 +79,10 @@ export default function Series() {
   const [addingPlayer, setAddingPlayer] = useState(false);
   const [addPlayerError, setAddPlayerError] = useState("");
   
+  const { hasPermission } = usePermission();
+  const canCreateSeries = hasPermission("SERIES", "create");
+  const canEditSeries = hasPermission("SERIES", "edit");
+
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
@@ -414,13 +419,15 @@ export default function Series() {
                     }`}
               </div>
 
-              <button
-                type="button"
-                onClick={openCreateModal}
-                className="inline-flex items-center justify-center rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-brand-600"
-              >
-                + Create Series
-              </button>
+              {canCreateSeries && (
+                <button
+                  type="button"
+                  onClick={openCreateModal}
+                  className="inline-flex items-center justify-center rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-brand-600"
+                >
+                  + Create Series
+                </button>
+              )}
             </div>
           </div>
 
@@ -781,7 +788,7 @@ export default function Series() {
                 <button
                 type="button"
                 onClick={handleAddTeam}
-                disabled={addingTeam || teamsLoading || !selectedTeamId}
+                disabled={!canEditSeries || addingTeam || teamsLoading || !selectedTeamId}
                 className="h-11 rounded-lg bg-brand-500 px-5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                 {addingTeam ? "Adding..." : "Add Team"}
@@ -865,7 +872,7 @@ export default function Series() {
               <button
                 type="button"
                 onClick={handleAddPlayer}
-                disabled={addingPlayer || !selectedPlayerId}
+                disabled={!canEditSeries || addingPlayer || !selectedPlayerId}
                 className="rounded-lg bg-brand-500 px-5 py-2.5 text-sm font-medium text-white hover:bg-brand-600 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {addingPlayer ? "Adding..." : "Add Player"}
