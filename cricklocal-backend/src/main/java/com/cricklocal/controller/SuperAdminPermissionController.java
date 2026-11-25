@@ -1,6 +1,6 @@
 package com.cricklocal.controller;
 
-import com.cricklocal.dto.EffectivePermissionResponse;
+import com.cricklocal.dto.PermissionModuleDefaultsResponse;
 import com.cricklocal.dto.PermissionOverrideRequest;
 import com.cricklocal.dto.SuperAdminUserPermissionResponse;
 import com.cricklocal.dto.UserPermissionManagementResponse;
@@ -23,7 +23,7 @@ public class SuperAdminPermissionController {
     }
 
     @GetMapping("/modules")
-    public List<EffectivePermissionResponse> getModules() {
+    public List<PermissionModuleDefaultsResponse> getModules() {
         return service.getAllModules();
     }
 
