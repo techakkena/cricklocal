@@ -29,6 +29,17 @@ public class PermissionAuthorizationService {
         }
 
         User user = authenticationService.getUserForGoogleLogin(oauth2User);
+
+        if (user == null
+                || user.getAccountStatus() != com.cricklocal.entity.UserAccountStatus.ACTIVE
+                || !Boolean.TRUE.equals(user.getActive())) {
+            return false;
+        }
+
+        if (moduleKey == null || moduleKey.isBlank() || action == null) {
+            return false;
+        }
+
         return permissionService.hasPermission(user, moduleKey, action);
     }
 }
