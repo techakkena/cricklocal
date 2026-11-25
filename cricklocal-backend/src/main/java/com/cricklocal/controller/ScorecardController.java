@@ -16,7 +16,7 @@ public class ScorecardController {
     }
 
     @GetMapping("/{matchId}/scorecard")
-    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'MATCHES', T(com.cricklocal.entity.PermissionAction).VIEW)")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'SCORECARDS', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public ScorecardResponse getScorecard(
             @PathVariable Long matchId) {
 
