@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiGet, apiPost, apiPut } from "../api/apiClient";
+import { useAuth } from "../context/AuthContext";
 
 interface UserSummary {
   userId: number;
@@ -28,6 +29,7 @@ const actions = ["view", "create", "edit", "delete", "approve"] as const;
 type Action = (typeof actions)[number];
 
 export default function SuperAdminUserPermissions() {
+  const { refreshUser } = useAuth();
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<number | null>(null);
   const [permissions, setPermissions] = useState<Permission[]>([]);
@@ -98,6 +100,7 @@ export default function SuperAdminUserPermissions() {
       );
 
       await loadPermissions(selectedUserId);
+      await refreshUser();
       setMessage("Permissions saved successfully.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to save permissions.");
@@ -118,6 +121,7 @@ export default function SuperAdminUserPermissions() {
         {},
       );
       await loadPermissions(selectedUserId);
+      await refreshUser();
       setMessage("Permissions reset to role defaults.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to reset permissions.");
