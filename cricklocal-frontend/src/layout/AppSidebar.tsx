@@ -17,6 +17,7 @@ import {
 } from "../icons";
 import { useSidebar } from "../context/SidebarContext";
 import SidebarWidget from "./SidebarWidget";
+import { usePermission } from "../hooks/usePermission";
 
 type NavItem = {
   name: string;
@@ -96,7 +97,11 @@ const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const location = useLocation();
   const { user } = useAuth();
+  const { hasPermission } = usePermission();
   const isAdmin = user?.adminAccess?.active === true;
+
+  const canView = (moduleKey: string) =>
+    user?.adminAccess?.superAdmin === true || hasPermission(moduleKey, "view");
 
   const [openSubmenu, setOpenSubmenu] = useState<{
     type: "main" | "others";
@@ -168,8 +173,42 @@ const AppSidebar: React.FC = () => {
   ) => (
     <ul className="flex flex-col gap-4">
       {items.map((nav, index) => {
-        if (nav.name === "Player Registrations" && !isAdmin) {
+        const filteredSubItems = nav.subItems?.filter((subItem) => {
+          const moduleMap: Record<string, string> = {
+            Teams: "TEAMS",
+            Players: "PLAYERS",
+            "Global Player Directory": "GLOBAL_PLAYERS",
+            "Local Players": "LOCAL_PLAYERS",
+            "Player Registrations": "PLAYER_REGISTRATIONS",
+            Series: "SERIES",
+            Matches: "MATCHES",
+            Upcoming: "MATCH_CENTER",
+            Live: "MATCH_CENTER",
+            History: "HISTORY",
+            Batting: "STATISTICS",
+            Bowling: "STATISTICS",
+            Fielding: "STATISTICS",
+            Leaderboards: "LEADERBOARDS",
+          };
+
+          return canView(moduleMap[subItem.name] ?? "",);
+        });
+
+        if (nav.subItems && filteredSubItems.length === 0) {
           return null;
+        }
+
+        if (!nav.subItems && nav.path) {
+          const directModuleMap: Record<string, string> = {
+            Dashboard: "DASHBOARD",
+            "Live Scoring": "LIVE_SCORING",
+            Scorecards: "SCORECARDS",
+            Settings: "SETTINGS",
+          };
+
+          if (!canView(directModuleMap[nav.name] ?? "")) {
+            return null;
+          }
         }
 
         return (
@@ -261,7 +300,7 @@ const AppSidebar: React.FC = () => {
                   }}
                 >
                   <ul className="mt-2 space-y-1 ml-9">
-                    {nav.subItems.map((subItem) => (
+                    {filteredSubItems?.map((subItem) => (
                       <li key={subItem.name}>
                         <Link
                           to={subItem.path}
