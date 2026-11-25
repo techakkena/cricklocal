@@ -1,9 +1,10 @@
 package com.cricklocal.service;
 
 import com.cricklocal.entity.AdminEntitlement;
-import com.cricklocal.entity.User;
 import com.cricklocal.enums.AdminSubscriptionStatus;
+import com.cricklocal.entity.User;
 import com.cricklocal.repository.AdminEntitlementRepository;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -11,11 +12,14 @@ import org.springframework.transaction.annotation.Transactional;
 public class AdminAccessService {
 
     private final AdminEntitlementRepository adminEntitlementRepository;
+    private final String superAdminEmail;
 
     public AdminAccessService(
-            AdminEntitlementRepository adminEntitlementRepository
+            AdminEntitlementRepository adminEntitlementRepository,
+            @Value("${app.security.super-admin-email:}") String superAdminEmail
     ) {
         this.adminEntitlementRepository = adminEntitlementRepository;
+        this.superAdminEmail = superAdminEmail;
     }
 
     @Transactional(readOnly = true)
@@ -25,6 +29,10 @@ public class AdminAccessService {
                 || user.getAccountStatus() != com.cricklocal.entity.UserAccountStatus.ACTIVE
                 || !Boolean.TRUE.equals(user.getActive())) {
             return false;
+        }
+
+        if (isConfiguredSuperAdmin(user)) {
+            return true;
         }
 
         AdminEntitlement entitlement =
@@ -54,6 +62,23 @@ public class AdminAccessService {
 
         return true;
     }
+
+    private boolean isConfiguredSuperAdmin(User user) {
+
+        String normalizedUserEmail =
+                user.getEmail() == null
+                        ? ""
+                        : user.getEmail().trim().toLowerCase();
+
+        String normalizedSuperAdminEmail =
+                superAdminEmail == null
+                        ? ""
+                        : superAdminEmail.trim().toLowerCase();
+
+        return !normalizedSuperAdminEmail.isBlank()
+                && normalizedUserEmail.equals(normalizedSuperAdminEmail);
+    }
+
     @Transactional
     public AdminEntitlement activateAdminAccess(
             User user,
@@ -79,13 +104,10 @@ public class AdminAccessService {
 
     @Transactional
     public void deactivateAdminAccess(User user) {
-
         adminEntitlementRepository
                 .findByUser(user)
                 .ifPresent(entitlement -> {
-                    entitlement.setStatus(
-                            AdminSubscriptionStatus.CANCELLED
-                    );
+                    entitlement.setStatus(AdminSubscriptionStatus.CANCELLED);
                     adminEntitlementRepository.save(entitlement);
                 });
     }

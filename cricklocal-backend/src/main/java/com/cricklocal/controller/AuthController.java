@@ -2,9 +2,10 @@ package com.cricklocal.controller;
 
 import com.cricklocal.entity.Player;
 import com.cricklocal.entity.User;
-import com.cricklocal.repository.PlayerRepository;
 import com.cricklocal.service.AdminAccessService;
 import com.cricklocal.service.AuthenticationService;
+import com.cricklocal.service.SuperAdminAuthorizationService;
+import com.cricklocal.repository.PlayerRepository;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
@@ -17,38 +18,41 @@ public class AuthController {
     private final AuthenticationService authenticationService;
     private final PlayerRepository playerRepository;
     private final AdminAccessService adminAccessService;
+    private final SuperAdminAuthorizationService superAdminAuthorizationService;
 
     public AuthController(
             AuthenticationService authenticationService,
             PlayerRepository playerRepository,
-            AdminAccessService adminAccessService
+            AdminAccessService adminAccessService,
+            SuperAdminAuthorizationService superAdminAuthorizationService
     ) {
         this.authenticationService = authenticationService;
         this.playerRepository = playerRepository;
         this.adminAccessService = adminAccessService;
+        this.superAdminAuthorizationService = superAdminAuthorizationService;
     }
 
     @GetMapping("/api/auth/me")
     public ResponseEntity<AuthUserResponse> currentUser(
             Authentication authentication
     ) {
-
         if (authentication == null
                 || !authentication.isAuthenticated()
                 || !(authentication.getPrincipal() instanceof OAuth2User oauth2User)) {
             return ResponseEntity.status(401).build();
         }
 
-        User user =
-                authenticationService.getUserForGoogleLogin(oauth2User);
+        User user = authenticationService.getUserForGoogleLogin(oauth2User);
 
-        Player player =
-                playerRepository.findByUser(user).orElse(null);
+        Player player = playerRepository.findByUser(user).orElse(null);
 
         boolean hasPlayerProfile = player != null;
 
         boolean hasActiveAdminAccess =
                 adminAccessService.hasActiveAdminAccess(user);
+
+        boolean isSuperAdmin =
+                superAdminAuthorizationService.isSuperAdmin(authentication);
 
         PlayerProfileResponse playerProfile =
                 new PlayerProfileResponse(
@@ -61,7 +65,10 @@ public class AuthController {
                 );
 
         AdminAccessResponse adminAccess =
-                new AdminAccessResponse(hasActiveAdminAccess);
+                new AdminAccessResponse(
+                        hasActiveAdminAccess,
+                        isSuperAdmin
+                );
 
         return ResponseEntity.ok(
                 new AuthUserResponse(
@@ -84,18 +91,16 @@ public class AuthController {
             Boolean active,
             PlayerProfileResponse playerProfile,
             AdminAccessResponse adminAccess
-    ) {
-    }
+    ) {}
 
     public record PlayerProfileResponse(
             Boolean exists,
             Long playerId,
             String registrationStatus
-    ) {
-    }
+    ) {}
 
     public record AdminAccessResponse(
-            Boolean active
-    ) {
-    }
+            Boolean active,
+            Boolean superAdmin
+    ) {}
 }

@@ -19,13 +19,13 @@ public class AdminUserController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("@superAdminAuthorizationService.isSuperAdmin(authentication)")
     public ResponseEntity<List<User>> getUsers() {
         return ResponseEntity.ok(adminUserService.getUsers());
     }
 
     @PostMapping("/{userId}/block")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("@superAdminAuthorizationService.isSuperAdmin(authentication)")
     public ResponseEntity<User> blockUser(
             @PathVariable Long userId) {
 
@@ -35,7 +35,7 @@ public class AdminUserController {
     }
 
     @PostMapping("/{userId}/activate")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("@superAdminAuthorizationService.isSuperAdmin(authentication)")
     public ResponseEntity<User> activateUser(
             @PathVariable Long userId) {
 
@@ -45,7 +45,7 @@ public class AdminUserController {
     }
 
     @PostMapping("/{userId}/approve-admin")
-    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    @PreAuthorize("@superAdminAuthorizationService.isSuperAdmin(authentication)")
     public ResponseEntity<User> approveAdmin(
             @PathVariable Long userId) {
 
