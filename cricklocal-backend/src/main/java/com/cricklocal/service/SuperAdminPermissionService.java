@@ -84,6 +84,7 @@ public class SuperAdminPermissionService {
     @Transactional(readOnly = true)
     public List<SuperAdminUserPermissionResponse> getUsers() {
         return userRepository.findAll().stream()
+                .filter(user -> !isSuperAdmin(user))
                 .map(this::toUserResponse)
                 .toList();
     }
