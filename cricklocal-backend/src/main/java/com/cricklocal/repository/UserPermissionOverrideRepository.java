@@ -6,4 +6,6 @@ import java.util.Optional;
 
 public interface UserPermissionOverrideRepository extends JpaRepository<UserPermissionOverride, Long> {
     Optional<UserPermissionOverride> findByUserIdAndModuleId(Long userId, Long moduleId);
+
+    void deleteByUserId(Long userId);
 }
