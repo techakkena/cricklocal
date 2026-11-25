@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import PageBreadcrumb from "../components/common/PageBreadCrumb";
 import PageMeta from "../components/common/PageMeta";
+import { usePermission } from "../hooks/usePermission";
 import Badge from "../components/ui/badge/Badge";
 import { Modal } from "../components/ui/modal";
 import {
@@ -73,6 +74,9 @@ export default function Matches() {
   const [matches, setMatches] = useState<MatchResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+
+  const { hasPermission } = usePermission();
+  const canCreateMatch = hasPermission("MATCHES", "create");
 
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -293,13 +297,15 @@ export default function Matches() {
                     }`}
               </div>
 
-              <button
-                type="button"
-                onClick={openCreateModal}
-                className="inline-flex items-center justify-center rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-brand-600"
-              >
-                + Create Match
-              </button>
+              {canCreateMatch && (
+                <button
+                  type="button"
+                  onClick={openCreateModal}
+                  className="inline-flex items-center justify-center rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-brand-600"
+                >
+                  + Create Match
+                </button>
+              )}
             </div>
           </div>
 
@@ -327,13 +333,15 @@ export default function Matches() {
                 Create your first CricketLocal match to get started.
               </p>
 
-              <button
-                type="button"
-                onClick={openCreateModal}
-                className="mt-4 inline-flex items-center justify-center rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-brand-600"
-              >
-                + Create Match
-              </button>
+              {canCreateMatch && (
+                <button
+                  type="button"
+                  onClick={openCreateModal}
+                  className="mt-4 inline-flex items-center justify-center rounded-lg bg-brand-500 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-brand-600"
+                >
+                  + Create Match
+                </button>
+              )}
             </div>
           )}
 
