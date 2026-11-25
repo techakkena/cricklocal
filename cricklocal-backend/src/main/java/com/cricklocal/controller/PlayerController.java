@@ -31,6 +31,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 
 import java.util.List;
@@ -82,6 +83,7 @@ public class PlayerController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'PLAYERS', T(com.cricklocal.entity.PermissionAction).CREATE)")
     public PlayerResponse createPlayer(
             @Valid @RequestBody CreatePlayerRequest request) {
 
@@ -90,6 +92,7 @@ public class PlayerController {
 
     @PostMapping("/local")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'LOCAL_PLAYERS', T(com.cricklocal.entity.PermissionAction).CREATE)")
     public PlayerResponse createLocalPlayer(
                 @Valid @RequestBody CreatePlayerRequest request) {
 
@@ -97,21 +100,25 @@ public class PlayerController {
     }
 
     @GetMapping
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'PLAYERS', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public List<PlayerResponse> getAllPlayers() {
         return playerService.getAllPlayers();
     }
 
     @GetMapping("/global")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'GLOBAL_PLAYERS', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public List<PlayerResponse> getGlobalPlayers() {
         return playerService.getGlobalPlayers();
     }
 
     @GetMapping("/local")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'LOCAL_PLAYERS', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public List<PlayerResponse> getLocalPlayers() {
         return playerService.getLocalPlayers();
     }
 
     @GetMapping("/{playerId:\\d+}")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'PLAYERS', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public PlayerResponse getPlayerById(
                 @PathVariable Long playerId) {
 
@@ -119,6 +126,7 @@ public class PlayerController {
     }
 
     @PostMapping("/import/validate")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'PLAYERS', T(com.cricklocal.entity.PermissionAction).CREATE)")
     public PlayerImportResponse validatePlayerImport(
             @RequestParam("file") MultipartFile file) {
 
@@ -126,6 +134,7 @@ public class PlayerController {
     }
 
     @PostMapping("/import")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'PLAYERS', T(com.cricklocal.entity.PermissionAction).CREATE)")
     public PlayerImportResponse importPlayers(
             @RequestParam("file") MultipartFile file,
             Authentication authentication) {
