@@ -8,7 +8,9 @@ import com.cricklocal.repository.UserPermissionOverrideRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class PermissionService {
@@ -30,18 +32,57 @@ public class PermissionService {
 
     @Transactional(readOnly = true)
     public List<EffectivePermissionResponse> getEffectivePermissions(User user) {
-        if (user == null) return List.of();
+        if (user == null
+                || user.getAccountStatus() != UserAccountStatus.ACTIVE
+                || !Boolean.TRUE.equals(user.getActive())) {
+            return List.of();
+        }
 
-        return moduleRepository.findAll().stream()
+        List<PermissionModule> modules = moduleRepository.findAll().stream()
                 .filter(module -> Boolean.TRUE.equals(module.getActive()))
-                .map(module -> effectivePermission(user, module))
+                .toList();
+
+        if (modules.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, RolePermission> rolePermissions =
+                rolePermissionRepository.findAllByRole(user.getRole()).stream()
+                        .collect(java.util.stream.Collectors.toMap(
+                                permission -> permission.getModule().getId(),
+                                permission -> permission,
+                                (first, second) -> first));
+
+        Map<Long, UserPermissionOverride> overrides =
+                overrideRepository.findAllByUserId(user.getId()).stream()
+                        .collect(java.util.stream.Collectors.toMap(
+                                override -> override.getModule().getId(),
+                                override -> override,
+                                (first, second) -> first));
+
+        return modules.stream()
+                .map(module -> effectivePermission(
+                        user,
+                        module,
+                        rolePermissions.get(module.getId()),
+                        overrides.get(module.getId())))
                 .toList();
     }
 
     @Transactional(readOnly = true)
     public boolean hasPermission(User user, String moduleKey, PermissionAction action) {
-        if (user == null) return false;
-        if (superAdminAuthorizationService.isSuperAdmin(user)) return true;
+        if (user == null
+                || user.getAccountStatus() != UserAccountStatus.ACTIVE
+                || !Boolean.TRUE.equals(user.getActive())
+                || moduleKey == null
+                || moduleKey.isBlank()
+                || action == null) {
+            return false;
+        }
+
+        if (superAdminAuthorizationService.isSuperAdmin(user)) {
+            return true;
+        }
 
         return getEffectivePermissions(user).stream()
                 .filter(p -> p.moduleKey().equals(moduleKey))
@@ -56,19 +97,15 @@ public class PermissionService {
                 .orElse(false);
     }
 
-    private EffectivePermissionResponse effectivePermission(User user, PermissionModule module) {
+    private EffectivePermissionResponse effectivePermission(
+            User user,
+            PermissionModule module,
+            RolePermission defaults,
+            UserPermissionOverride override) {
         if (superAdminAuthorizationService.isSuperAdmin(user)) {
             return new EffectivePermissionResponse(
                     module.getModuleKey(), module.getModuleName(), true, true, true, true, true);
         }
-
-        RolePermission defaults = rolePermissionRepository
-                .findByRoleAndModuleId(user.getRole(), module.getId())
-                .orElse(null);
-
-        UserPermissionOverride override = overrideRepository
-                .findByUserIdAndModuleId(user.getId(), module.getId())
-                .orElse(null);
 
         return new EffectivePermissionResponse(
                 module.getModuleKey(),
