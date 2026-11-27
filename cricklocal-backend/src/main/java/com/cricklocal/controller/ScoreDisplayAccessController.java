@@ -10,6 +10,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 @RestController
 @RequestMapping("/api/matches")
@@ -30,6 +31,7 @@ public class ScoreDisplayAccessController {
     }
 
     @PostMapping("/{matchId}/score-display/access")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'SCORECARDS', T(com.cricklocal.entity.PermissionAction).EDIT)")
     @ResponseStatus(HttpStatus.CREATED)
     public GenerateScoreDisplayAccessResponse generateAccess(
             @PathVariable Long matchId,

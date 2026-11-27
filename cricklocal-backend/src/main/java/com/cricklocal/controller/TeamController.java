@@ -8,6 +8,7 @@ import com.cricklocal.repository.TeamRepository;
 import com.cricklocal.service.TeamImportService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -30,7 +31,9 @@ public class TeamController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public TeamResponse createTeam(@Valid @RequestBody CreateTeamRequest request) {
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'TEAMS', T(com.cricklocal.entity.PermissionAction).CREATE)")
+    public TeamResponse createTeam(
+            @Valid @RequestBody CreateTeamRequest request) {
 
         Team team = new Team();
 
@@ -42,7 +45,9 @@ public class TeamController {
     }
 
     @GetMapping
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'TEAMS', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public List<TeamResponse> getAllTeams() {
+
         return teamRepository.findAll()
                 .stream()
                 .map(this::toTeamResponse)
@@ -50,6 +55,7 @@ public class TeamController {
     }
 
     @PostMapping("/import/validate")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'TEAMS', T(com.cricklocal.entity.PermissionAction).CREATE)")
     public TeamImportResponse validateTeamImport(
             @RequestParam("file") MultipartFile file) {
 
@@ -57,6 +63,7 @@ public class TeamController {
     }
 
     @PostMapping("/import")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'TEAMS', T(com.cricklocal.entity.PermissionAction).CREATE)")
     public TeamImportResponse importTeams(
             @RequestParam("file") MultipartFile file) {
 
@@ -64,6 +71,7 @@ public class TeamController {
     }
 
     private TeamResponse toTeamResponse(Team team) {
+
         TeamResponse response = new TeamResponse();
 
         response.setId(team.getId());

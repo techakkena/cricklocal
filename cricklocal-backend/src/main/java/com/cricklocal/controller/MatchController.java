@@ -6,6 +6,7 @@ import com.cricklocal.entity.Match;
 import com.cricklocal.service.MatchService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,23 +23,31 @@ public class MatchController {
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Match createMatch(
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'MATCHES', T(com.cricklocal.entity.PermissionAction).CREATE)")
+    public MatchResponse createMatch(
             @Valid @RequestBody CreateMatchRequest request) {
 
-        return matchService.createMatch(request);
+        Match match = matchService.createMatch(request);
+
+        return matchService.getMatchById(match.getId());
     }
 
     @GetMapping
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'MATCHES', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public List<MatchResponse> getAllMatches() {
+
         return matchService.getAllMatches();
     }
 
     @GetMapping("/history")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'HISTORY', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public List<MatchResponse> getMatchHistory() {
+
         return matchService.getMatchHistory();
     }
 
     @GetMapping("/{matchId}")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'MATCHES', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public MatchResponse getMatchById(
             @PathVariable Long matchId) {
 

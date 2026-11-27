@@ -2,6 +2,7 @@ package com.cricklocal.controller;
 
 import com.cricklocal.dto.PlayerMatchHistoryResponse;
 import com.cricklocal.service.PlayerHistoryService;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,6 +20,7 @@ public class PlayerHistoryController {
     }
 
     @GetMapping("/{playerId}/history")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'HISTORY', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public List<PlayerMatchHistoryResponse> getPlayerMatchHistory(
             @PathVariable Long playerId) {
 

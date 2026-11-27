@@ -6,6 +6,7 @@ import com.cricklocal.service.InningsStateService;
 import com.cricklocal.service.ScoreOperatorAuthorizationService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -26,6 +27,7 @@ public class InningsStateController {
 
     @PostMapping("/{inningsId}/state")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'LIVE_SCORING', T(com.cricklocal.entity.PermissionAction).EDIT)")
     public InningsStateResponse setState(
             @PathVariable Long inningsId,
             @RequestHeader(
@@ -46,6 +48,7 @@ public class InningsStateController {
     }
 
     @GetMapping("/{inningsId}/state")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'LIVE_SCORING', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public InningsStateResponse getState(
             @PathVariable Long inningsId) {
 

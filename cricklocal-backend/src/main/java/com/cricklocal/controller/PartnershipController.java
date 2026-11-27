@@ -5,6 +5,7 @@ import com.cricklocal.entity.Innings;
 import com.cricklocal.exception.ResourceNotFoundException;
 import com.cricklocal.repository.InningsRepository;
 import com.cricklocal.service.PartnershipService;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -25,6 +26,7 @@ public class PartnershipController {
     }
 
     @GetMapping("/{inningsId}/partnerships")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'LIVE_SCORING', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public List<PartnershipResponse> getPartnerships(
             @PathVariable Long inningsId) {
 

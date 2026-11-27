@@ -411,3 +411,47 @@ export interface BowlingInningsResponse {
   wides: number;
   noBalls: number;
 }
+
+export type PermissionAction =
+  | "VIEW"
+  | "CREATE"
+  | "EDIT"
+  | "DELETE"
+  | "APPROVE";
+
+export type UserRole =
+  | "PLAYER"
+  | "ADMIN"
+  | "SUPER_ADMIN";
+
+export interface PermissionModuleResponse {
+  id: number;
+  moduleKey: string;
+  moduleName: string;
+  actions: PermissionAction[];
+}
+
+export interface PermissionItemResponse {
+  moduleKey: string;
+  moduleName: string;
+  action: PermissionAction;
+  roleDefault: boolean | null;
+  override: boolean | null;
+  effective: boolean;
+}
+
+export interface UserPermissionResponse {
+  userId: number;
+  email: string;
+  displayName: string;
+  role: UserRole;
+  permissions: PermissionItemResponse[];
+}
+
+export interface PermissionOverrideRequest {
+  moduleKey: string;
+  action: PermissionAction;
+  allowed: boolean | null;
+}
+
+

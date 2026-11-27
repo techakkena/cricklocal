@@ -4,6 +4,7 @@ import com.cricklocal.dto.MatchResultResponse;
 import com.cricklocal.service.MatchResultService;
 import com.cricklocal.service.ScoreOperatorAuthorizationService;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
@@ -17,11 +18,13 @@ public class MatchResultController {
     public MatchResultController(
             MatchResultService matchResultService,
             ScoreOperatorAuthorizationService operatorAuthorizationService) {
+
         this.matchResultService = matchResultService;
         this.operatorAuthorizationService = operatorAuthorizationService;
     }
 
     @PostMapping("/{matchId}/complete")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'MATCHES', T(com.cricklocal.entity.PermissionAction).EDIT)")
     public MatchResultResponse completeMatch(
             @PathVariable Long matchId,
             @RequestHeader(
@@ -29,21 +32,35 @@ public class MatchResultController {
                     required = false) String sessionToken) {
 
         operatorAuthorizationService.requireSessionForMatch(
-                sessionToken, matchId);
+                sessionToken,
+                matchId
+        );
 
         return matchResultService.completeMatch(matchId);
     }
 
-    // Legacy endpoint disabled: result confirmation must use /complete.
+    /**
+     * Legacy endpoint intentionally disabled.
+     *
+     * Result confirmation must use /complete,
+     * which validates the score operator session.
+     */
     @PostMapping("/{matchId}/result")
-    public MatchResultResponse recordResult(@PathVariable Long matchId) {
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'MATCHES', T(com.cricklocal.entity.PermissionAction).EDIT)")
+    public MatchResultResponse recordResult(
+            @PathVariable Long matchId) {
+
         throw new ResponseStatusException(
                 HttpStatus.GONE,
-                "Use POST /api/matches/{matchId}/complete to finalize a match");
+                "Use POST /api/matches/{matchId}/complete to finalize a match"
+        );
     }
 
     @GetMapping("/{matchId}/result")
-    public MatchResultResponse getResult(@PathVariable Long matchId) {
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'MATCHES', T(com.cricklocal.entity.PermissionAction).VIEW)")
+    public MatchResultResponse getResult(
+            @PathVariable Long matchId) {
+
         return matchResultService.getResult(matchId);
     }
 }

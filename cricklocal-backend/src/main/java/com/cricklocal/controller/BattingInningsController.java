@@ -5,6 +5,7 @@ import com.cricklocal.entity.Innings;
 import com.cricklocal.exception.ResourceNotFoundException;
 import com.cricklocal.repository.InningsRepository;
 import com.cricklocal.service.BattingInningsService;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,11 +20,13 @@ public class BattingInningsController {
     public BattingInningsController(
             InningsRepository inningsRepository,
             BattingInningsService battingInningsService) {
+
         this.inningsRepository = inningsRepository;
         this.battingInningsService = battingInningsService;
     }
 
     @GetMapping("/{inningsId}/batting")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'LIVE_SCORING', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public List<BattingInningsResponse> getBattingStats(
             @PathVariable Long inningsId) {
 

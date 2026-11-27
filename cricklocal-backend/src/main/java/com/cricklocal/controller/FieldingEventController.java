@@ -9,6 +9,7 @@ import com.cricklocal.repository.InningsRepository;
 import com.cricklocal.repository.PlayerRepository;
 import com.cricklocal.service.FieldingEventService;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.util.List;
 
@@ -31,6 +32,7 @@ public class FieldingEventController {
     }
 
     @GetMapping("/innings/{inningsId}/fielding")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'LIVE_SCORING', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public List<FieldingEventResponse> getFieldingEvents(
             @PathVariable Long inningsId) {
 
@@ -44,6 +46,7 @@ public class FieldingEventController {
     }
 
     @GetMapping("/players/{playerId}/fielding")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'LIVE_SCORING', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public FieldingStatsResponse getPlayerFieldingStats(
             @PathVariable Long playerId) {
 

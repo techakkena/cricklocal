@@ -1,7 +1,11 @@
 package com.cricklocal.config;
 
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.access.expression.method.DefaultMethodSecurityExpressionHandler;
+import org.springframework.security.access.expression.method.MethodSecurityExpressionHandler;
+import org.springframework.security.access.expression.method.MethodSecurityExpressionHandler;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.oauth2.client.web.AuthorizationRequestRepository;
@@ -165,5 +169,17 @@ public class SecurityConfig {
         );
 
         return resolver;
+    }
+
+    @Bean(name = "methodSecurityExpressionHandler")
+                static MethodSecurityExpressionHandler methodSecurityExpressionHandler(
+                        ApplicationContext applicationContext) {
+
+                DefaultMethodSecurityExpressionHandler handler =
+                        new DefaultMethodSecurityExpressionHandler();
+
+                handler.setApplicationContext(applicationContext);
+
+                return handler;
     }
 }

@@ -1,5 +1,7 @@
 package com.cricklocal;
 import com.cricklocal.entity.MatchTeam;
+import com.cricklocal.entity.PermissionAction;
+import com.cricklocal.entity.PermissionModule;
 import com.cricklocal.controller.PlayerRegistrationController;
 import com.cricklocal.dto.InningsResponse;
 import com.cricklocal.entity.InningsState;
@@ -26,8 +28,10 @@ import com.cricklocal.entity.Series;
 import com.cricklocal.entity.SeriesTeam;
 import com.cricklocal.entity.AdminEntitlement;
 import com.cricklocal.entity.User;
+import com.cricklocal.entity.UserAccountStatus;
 import com.cricklocal.entity.PlayerRegistrationInvitation;
 import com.cricklocal.entity.UserAuthentication;
+import com.cricklocal.entity.UserPermissionOverride;
 import com.cricklocal.entity.UserRole;
 import com.cricklocal.enums.ExtraType;
 import com.cricklocal.enums.WicketType;
@@ -59,6 +63,8 @@ import com.cricklocal.repository.SeriesRepository;
 import com.cricklocal.repository.AdminEntitlementRepository;
 import com.cricklocal.repository.PlayerRegistrationInvitationRepository;
 import com.cricklocal.repository.UserAuthenticationRepository;
+import com.cricklocal.repository.PermissionModuleRepository;
+import com.cricklocal.repository.UserPermissionOverrideRepository;
 import com.cricklocal.service.DeliveryService;
 import com.cricklocal.service.InningsService;
 import com.cricklocal.service.ScorecardService;
@@ -78,6 +84,7 @@ import com.cricklocal.service.PlayerRegistrationLinkService;
 import com.cricklocal.service.PlayerRegistrationInvitationMaintenanceService;
 import com.cricklocal.service.PlayerRegistrationInvitationBackfillService;
 import com.cricklocal.service.MatchResultService;
+import com.cricklocal.service.PermissionService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -86,6 +93,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.http.MediaType;
 import org.springframework.dao.DataIntegrityViolationException;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import com.cricklocal.enums.PlayerRole;
 import com.cricklocal.service.LeaderboardService;
 import com.cricklocal.exception.ResourceNotFoundException;
@@ -101,6 +109,8 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.assertj.core.api.Assertions.assertThat;
+import org.junit.jupiter.api.Assertions;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -114,9 +124,14 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.client.authentication.OAuth2AuthenticationToken;
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User;
 
 import org.springframework.mock.web.MockMultipartFile;
+import static org.springframework.test.web.servlet.result.MockMvcResultHandlers.print;
+import static org.hamcrest.Matchers.nullValue;
+import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.web.servlet.result.MockMvcResultHandlers;
 
 import java.time.Instant;
 import java.time.Duration;
@@ -185,6 +200,12 @@ class CricklocalBackendApplicationTests {
         private UserAuthenticationRepository userAuthenticationRepository;
 
         @Autowired
+        private PermissionModuleRepository permissionModuleRepository;
+
+        @Autowired
+        private UserPermissionOverrideRepository userPermissionOverrideRepository;
+
+        @Autowired
         private InningsService inningsService;
 
         @Autowired
@@ -244,6 +265,9 @@ class CricklocalBackendApplicationTests {
 
         @Autowired
         private MatchResultService matchResultService;
+
+        @Autowired
+        private PermissionService permissionService;
 
         @Autowired
         private PlayerRegistrationController playerRegistrationController;
@@ -2594,28 +2618,35 @@ class CricklocalBackendApplicationTests {
 	}
 
 	@Test
-	void apiShouldReturnStandardErrorResponseForUnknownPlayer() throws Exception {
+        void apiShouldReturnStandardErrorResponseForUnknownPlayer() throws Exception {
 
-			mockMvc.perform(
-					org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-								.get("/api/players/999999999/career-stats"))
-						.andExpect(
-								org.springframework.test.web.servlet.result.MockMvcResultMatchers
-										.status()
-										.isNotFound())
-						.andExpect(
-								org.springframework.test.web.servlet.result.MockMvcResultMatchers
-										.jsonPath("$.status")
-										.value(404))
-						.andExpect(
-								org.springframework.test.web.servlet.result.MockMvcResultMatchers
-										.jsonPath("$.message")
-										.value("Player not found: 999999999"))
-						.andExpect(
-								org.springframework.test.web.servlet.result.MockMvcResultMatchers
-										.jsonPath("$.timestamp")
-										.exists());
-	}
+        Authentication authentication = createAdminAuthentication();
+
+        mockMvc.perform(
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .get("/api/players/999999999/career-stats")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(
+                org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .status()
+                        .isNotFound())
+        .andExpect(
+                org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .jsonPath("$.status")
+                        .value(404))
+        .andExpect(
+                org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .jsonPath("$.message")
+                        .value("Player not found: 999999999"))
+        .andExpect(
+                org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                        .jsonPath("$.timestamp")
+                        .exists());
+        }
 
 	@Test
 	void apiShouldReturnStandardErrorResponseForValidationFailure()
@@ -2678,11 +2709,16 @@ class CricklocalBackendApplicationTests {
 				matchTeam.setSide(MatchTeamSide.TEAM_A);
 				matchTeamRepository.save(matchTeam);
 
+                                Authentication authentication = createAdminAuthentication();
 				mockMvc.perform(
 						org.springframework.test.web.servlet.request.MockMvcRequestBuilders
 								.post("/api/matches/"
 										+ match.getId()
 										+ "/innings")
+                                                                .with(
+                                                                        SecurityMockMvcRequestPostProcessors
+                                                                                .authentication(authentication)
+                                                                )
 								.contentType(
 										org.springframework.http.MediaType.APPLICATION_JSON)
 								.content("""
@@ -2735,7 +2771,7 @@ class CricklocalBackendApplicationTests {
 					response.getTimestamp() != null);
 	}
 
-	@Test
+    @Test
     void teamExcelImportShouldNotPartiallyCreateTeamsWhenValidationFails()
             throws Exception {
 
@@ -2777,16 +2813,25 @@ class CricklocalBackendApplicationTests {
                     new java.io.ByteArrayOutputStream();
 
             workbook.write(outputStream);
+            
+            Authentication authentication = createAdminAuthentication();
 
             mockMvc.perform(
-                            org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                                    .multipart("/api/teams/import")
-                                    .file(
-                                            new org.springframework.mock.web.MockMultipartFile(
-                                                    "file",
-                                                    "atomic-import.xlsx",
-                                                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                                    outputStream.toByteArray())))
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                     .multipart("/api/teams/import")
+                     .file(
+                                new org.springframework.mock.web.MockMultipartFile(
+                                        "file",
+                                        "atomic-import.xlsx",
+                                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                        outputStream.toByteArray()
+                                )
+                          ) 
+                     .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                          )
+                     )
                     .andExpect(
                             org.springframework.test.web.servlet.result.MockMvcResultMatchers
                                     .status()
@@ -2869,29 +2914,38 @@ class CricklocalBackendApplicationTests {
                     new java.io.ByteArrayOutputStream();
 
             workbook.write(outputStream);
+           
+            Authentication authentication = createAdminAuthentication();
 
             mockMvc.perform(
-                            org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                                    .multipart("/api/teams/import")
-                                    .file(
-                                            new org.springframework.mock.web.MockMultipartFile(
-                                                    "file",
-                                                    "teams-import.xlsx",
-                                                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                                    outputStream.toByteArray())))
-                    .andExpect(
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .multipart("/api/teams/import")
+                        .file(
+                                new org.springframework.mock.web.MockMultipartFile(
+                                        "file",
+                                        "teams-import.xlsx",
+                                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                        outputStream.toByteArray()
+                                )
+                        )
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                          )
+                        )
+                        .andExpect(
                             org.springframework.test.web.servlet.result.MockMvcResultMatchers
                                     .status()
                                     .isOk())
-                    .andExpect(
+                        .andExpect(
                             org.springframework.test.web.servlet.result.MockMvcResultMatchers
                                     .jsonPath("$.totalRows")
                                     .value(2))
-                    .andExpect(
+                        .andExpect(
                             org.springframework.test.web.servlet.result.MockMvcResultMatchers
                                     .jsonPath("$.createdRows")
                                     .value(2))
-                    .andExpect(
+                        .andExpect(
                             org.springframework.test.web.servlet.result.MockMvcResultMatchers
                                     .jsonPath("$.errors")
                                     .isEmpty());
@@ -2955,32 +3009,38 @@ class CricklocalBackendApplicationTests {
 					new java.io.ByteArrayOutputStream();
 
 			workbook.write(outputStream);
-
+                        
+                        Authentication authentication = createAdminAuthentication();
 			mockMvc.perform(
-							org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+					org.springframework.test.web.servlet.request.MockMvcRequestBuilders
 									.multipart("/api/teams/import/validate")
 									.file(
 											new org.springframework.mock.web.MockMultipartFile(
 													"file",
 													"teams.xlsx",
 													"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-													outputStream.toByteArray())))
-					.andExpect(
-							org.springframework.test.web.servlet.result.MockMvcResultMatchers
-									.status()
-									.isOk())
-					.andExpect(
-							org.springframework.test.web.servlet.result.MockMvcResultMatchers
-									.jsonPath("$.totalRows")
-									.value(2))
-					.andExpect(
-							org.springframework.test.web.servlet.result.MockMvcResultMatchers
-									.jsonPath("$.createdRows")
-									.value(0))
-					.andExpect(
-							org.springframework.test.web.servlet.result.MockMvcResultMatchers
-									.jsonPath("$.errors")
-									.isEmpty());
+													outputStream.toByteArray()))
+                                                                        .with(
+                                                                                SecurityMockMvcRequestPostProcessors
+                                                                                        .authentication(authentication)
+                                                                                )                        
+                                                                        )
+                                                                        .andExpect(
+                                                                                   org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                                                                                        .status()
+                                                                                                        .isOk())
+                                                                        .andExpect(
+                                                                                   org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                                                                                        .jsonPath("$.totalRows")
+                                                                                                        .value(2))
+                                                                        .andExpect(
+                                                                                   org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                                                                                        .jsonPath("$.createdRows")
+                                                                                                        .value(0))
+                                                                        .andExpect(
+                                                                                   org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                                                                                        .jsonPath("$.errors")
+                                                                                                        .isEmpty());
 		}
 
 		assertEquals(
@@ -2989,55 +3049,70 @@ class CricklocalBackendApplicationTests {
 	}
 
 	@Test
-    void teamExcelValidationShouldRejectInvalidHeaders()
-				throws Exception {
+        void teamExcelValidationShouldRejectInvalidHeaders()
+                throws Exception {
 
-			try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook =
-						new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
+        try (org.apache.poi.xssf.usermodel.XSSFWorkbook workbook =
+                        new org.apache.poi.xssf.usermodel.XSSFWorkbook()) {
 
-				org.apache.poi.ss.usermodel.Sheet sheet =
-						workbook.createSheet("Teams");
+                org.apache.poi.ss.usermodel.Sheet sheet =
+                        workbook.createSheet("Teams");
 
-				org.apache.poi.ss.usermodel.Row header =
-						sheet.createRow(0);
+                org.apache.poi.ss.usermodel.Row header =
+                        sheet.createRow(0);
 
-				header.createCell(0).setCellValue("Name");
-				header.createCell(1).setCellValue("Code");
-				header.createCell(2).setCellValue("Location");
+                header.createCell(0).setCellValue("Name");
+                header.createCell(1).setCellValue("Code");
+                header.createCell(2).setCellValue("Location");
 
-				java.io.ByteArrayOutputStream outputStream =
-						new java.io.ByteArrayOutputStream();
+                java.io.ByteArrayOutputStream outputStream =
+                        new java.io.ByteArrayOutputStream();
 
-				workbook.write(outputStream);
+                workbook.write(outputStream);
 
-				mockMvc.perform(
-								org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-										.multipart("/api/teams/import/validate")
-										.file(
-												new org.springframework.mock.web.MockMultipartFile(
-														"file",
-														"invalid-headers.xlsx",
-														"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-														outputStream.toByteArray())))
-						.andExpect(
-								org.springframework.test.web.servlet.result.MockMvcResultMatchers
-										.status()
-										.isBadRequest())
-						.andExpect(
-								org.springframework.test.web.servlet.result.MockMvcResultMatchers
-										.jsonPath("$.status")
-										.value(400))
-						.andExpect(
-								org.springframework.test.web.servlet.result.MockMvcResultMatchers
-										.jsonPath("$.message")
-										.value(
-												"Invalid Excel headers. Expected: Team Name, Short Name, City"))
-						.andExpect(
-								org.springframework.test.web.servlet.result.MockMvcResultMatchers
-										.jsonPath("$.timestamp")
-										.exists());
-			}
-    }
+                Authentication authentication =
+                        createAdminAuthentication();
+
+                mockMvc.perform(
+                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                .multipart("/api/teams/import/validate")
+                                .file(
+                                        new org.springframework.mock.web.MockMultipartFile(
+                                                "file",
+                                                "invalid-headers.xlsx",
+                                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                                outputStream.toByteArray()
+                                        )
+                                )
+                                .with(
+                                        SecurityMockMvcRequestPostProcessors
+                                                .authentication(authentication)
+                                )
+                )
+                .andExpect(
+                        org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                .status()
+                                .isBadRequest()
+                )
+                .andExpect(
+                        org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                .jsonPath("$.status")
+                                .value(400)
+                )
+                .andExpect(
+                        org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                .jsonPath("$.message")
+                                .value(
+                                        "Invalid Excel headers. Expected: Team Name, Short Name, City"
+                                )
+                )
+                .andExpect(
+                        org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                .jsonPath("$.timestamp")
+                                .exists()
+                );
+        }
+        }
 
     @Test
     void teamExcelValidationShouldReportRowLevelErrors()
@@ -3075,6 +3150,7 @@ class CricklocalBackendApplicationTests {
 
             workbook.write(outputStream);
 
+            Authentication authentication = createAdminAuthentication();
             mockMvc.perform(
                             org.springframework.test.web.servlet.request.MockMvcRequestBuilders
                                     .multipart("/api/teams/import/validate")
@@ -3083,7 +3159,12 @@ class CricklocalBackendApplicationTests {
                                                     "file",
                                                     "row-errors.xlsx",
                                                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                                    outputStream.toByteArray())))
+                                                    outputStream.toByteArray()))
+                                   .with(
+                                        SecurityMockMvcRequestPostProcessors
+                                                .authentication(authentication)
+                                        )
+                                   )
                     .andExpect(
                             org.springframework.test.web.servlet.result.MockMvcResultMatchers
                                     .status()
@@ -3176,82 +3257,89 @@ class CricklocalBackendApplicationTests {
 
             workbook.write(outputStream);
 
+            Authentication authentication = createAdminAuthentication();
             mockMvc.perform(
                             org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                                    .multipart("/api/teams/import/validate")
-                                    .file(
+                                .multipart("/api/teams/import/validate")
+                                .file(
                                             new org.springframework.mock.web.MockMultipartFile(
                                                     "file",
                                                     "duplicate-teams.xlsx",
                                                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                                    outputStream.toByteArray())))
-                    .andExpect(
-                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
-                                    .status()
-                                    .isOk())
-                    .andExpect(
-                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
-                                    .jsonPath("$.totalRows")
-                                    .value(4))
-                    .andExpect(
-                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
-                                    .jsonPath("$.createdRows")
-                                    .value(0))
-                    .andExpect(
-                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
-                                    .jsonPath("$.errors.length()").value(3))
-                    .andExpect(
-                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
-                                    .jsonPath("$.errors[0].rowNumber")
-                                    .value(2))
-                    .andExpect(
-                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
-                                    .jsonPath("$.errors[0].message")
-                                    .value("Team name already exists"))
-                    .andExpect(
-                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
-                                    .jsonPath("$.errors[1].rowNumber")
-                                    .value(3))
-                    .andExpect(
-                            org.springframework.test.web.servlet.result.MockMvcResultMatchers
-                                    .jsonPath("$.errors[1].message")
-                                    .value("Short name already exists"));
-        }
+                                                    outputStream.toByteArray()))
+                                .with(
+                                        SecurityMockMvcRequestPostProcessors
+                                                .authentication(authentication)
+                                     )                
+                                )
+                                .andExpect(
+                                        org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                                .status()
+                                                .isOk())
+                                .andExpect(
+                                        org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                                .jsonPath("$.totalRows")
+                                                .value(4))
+                                .andExpect(
+                                        org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                                .jsonPath("$.createdRows")
+                                                .value(0))
+                                .andExpect(
+                                        org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                                .jsonPath("$.errors.length()").value(3))
+                                .andExpect(
+                                        org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                                .jsonPath("$.errors[0].rowNumber")
+                                                .value(2))
+                                .andExpect(
+                                        org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                                .jsonPath("$.errors[0].message")
+                                                .value("Team name already exists"))
+                                .andExpect(
+                                        org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                                .jsonPath("$.errors[1].rowNumber")
+                                                .value(3))
+                                .andExpect(
+                                        org.springframework.test.web.servlet.result.MockMvcResultMatchers
+                                                .jsonPath("$.errors[1].message")
+                                                .value("Short name already exists"));
+                        }
     }
 
 	@Test
-	void createPlayerApiShouldReturnPlayerResponse() throws Exception {
+        void createPlayerApiShouldReturnPlayerResponse() throws Exception {
 
-		String testId = String.valueOf(System.currentTimeMillis());
+                String testId = String.valueOf(System.currentTimeMillis());
 
-		mockMvc.perform(
-						post("/api/players")
-								.contentType(MediaType.APPLICATION_JSON)
-								.content("""
-										{
-										"firstName": "API",
-										"lastName": "Player",
-										"displayName": "API Player %s",
-										"phone": "9000000000",
-										"battingStyle": "RIGHT_HAND",
-										"bowlingStyle": "NONE",
-										"role": "BATTER"
-										}
-										""".formatted(testId)))
-				.andExpect(status().isCreated())
-				.andExpect(jsonPath("$.id").exists())
-				.andExpect(jsonPath("$.firstName").value("API"))
-				.andExpect(jsonPath("$.lastName").value("Player"))
-				.andExpect(jsonPath("$.displayName").value("API Player " + testId))
-				.andExpect(jsonPath("$.phone").value("9000000000"))
-				.andExpect(jsonPath("$.battingStyle").value("RIGHT_HAND"))
-				.andExpect(jsonPath("$.bowlingStyle").value("NONE"))
-				.andExpect(jsonPath("$.role").value("BATTER"))
-				.andExpect(jsonPath("$.active").value(true))
-				.andExpect(jsonPath("$.createdAt").exists())
-				.andExpect(jsonPath("$.teams").isArray())
-				.andExpect(jsonPath("$.teams").isEmpty());
-	}
+                mockMvc.perform(
+                                post("/api/players")
+                                        .with(authentication(createAdminAuthentication()))
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content("""
+                                                {
+                                                "firstName": "API",
+                                                "lastName": "Player",
+                                                "displayName": "API Player %s",
+                                                "phone": "9000000000",
+                                                "battingStyle": "RIGHT_HAND",
+                                                "bowlingStyle": "NONE",
+                                                "role": "BATTER"
+                                                }
+                                                """.formatted(testId)))
+                        .andExpect(status().isCreated())
+                        .andExpect(jsonPath("$.id").exists())
+                        .andExpect(jsonPath("$.firstName").value("API"))
+                        .andExpect(jsonPath("$.lastName").value("Player"))
+                        .andExpect(jsonPath("$.displayName").value("API Player " + testId))
+                        .andExpect(jsonPath("$.phone").value("9000000000"))
+                        .andExpect(jsonPath("$.battingStyle").value("RIGHT_HAND"))
+                        .andExpect(jsonPath("$.bowlingStyle").value("NONE"))
+                        .andExpect(jsonPath("$.role").value("BATTER"))
+                        .andExpect(jsonPath("$.active").value(true))
+                        .andExpect(jsonPath("$.createdAt").exists())
+                        .andExpect(jsonPath("$.teams").isArray())
+                        .andExpect(jsonPath("$.teams").isEmpty());
+        }
 
 	@Test
 	void getPlayersApiShouldReturnPlayerResponses() throws Exception {
@@ -3264,7 +3352,8 @@ class CricklocalBackendApplicationTests {
 				"API List Player " + testId,
 				PlayerRole.BATTER);
 
-		mockMvc.perform(get("/api/players"))
+		mockMvc.perform(get("/api/players")
+                                .with(authentication(createAdminAuthentication())))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$").isArray())
 				.andExpect(jsonPath(
@@ -3300,7 +3389,8 @@ class CricklocalBackendApplicationTests {
 		teamPlayer.setJerseyNumber(27);
 		teamPlayer = teamPlayerRepository.save(teamPlayer);
 
-		mockMvc.perform(get("/api/players/" + player.getId()))
+		mockMvc.perform(get("/api/players/" + player.getId())
+                                .with(authentication(createAdminAuthentication())))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.id").value(player.getId()))
 				.andExpect(jsonPath("$.displayName")
@@ -3325,15 +3415,20 @@ class CricklocalBackendApplicationTests {
 	}
 
 	@Test
-	void getUnknownPlayerApiShouldReturnNotFound() throws Exception {
+        void getUnknownPlayerApiShouldReturnNotFound() throws Exception {
 
-		mockMvc.perform(get("/api/players/999999999"))
-				.andExpect(status().isNotFound())
-				.andExpect(jsonPath("$.status").value(404))
-				.andExpect(jsonPath("$.message")
-						.value("Player not found: 999999999"))
-				.andExpect(jsonPath("$.timestamp").exists());
-	}
+                long unknownPlayerId = 999999999L;
+
+                mockMvc.perform(
+                        get("/api/players/" + unknownPlayerId)
+                                .with(authentication(createAdminAuthentication()))
+                        )
+                        .andExpect(status().isNotFound())
+                        .andExpect(jsonPath("$.status").value(404))
+                        .andExpect(jsonPath("$.message")
+                                .value("Player not found: 999999999"))
+                        .andExpect(jsonPath("$.timestamp").exists());
+        }
 
 	@Test
         void playerExcelImportShouldCreateValidPlayers() throws Exception {
@@ -3997,113 +4092,138 @@ class CricklocalBackendApplicationTests {
     }
 
 	@Test
-	void addPlayerToTeamShouldRejectDuplicateActiveJerseyNumber()
-			throws Exception {
+        void addPlayerToTeamShouldRejectDuplicateActiveJerseyNumber()
+                throws Exception {
 
-		String testId = String.valueOf(System.currentTimeMillis());
+        String testId = String.valueOf(System.currentTimeMillis());
 
-		Team team = new Team();
-		team.setName("Jersey Team " + testId);
-		team.setShortName("JER" + testId);
-		team.setCity("Nellore");
-		team = teamRepository.save(team);
+        Team team = new Team();
+        team.setName("Jersey Team " + testId);
+        team.setShortName("JER" + testId);
+        team.setCity("Nellore");
+        team = teamRepository.save(team);
 
-		Player firstPlayer = new Player();
-		firstPlayer.setFirstName("First");
-		firstPlayer.setLastName("Player");
-		firstPlayer.setDisplayName("First Player " + testId);
-		firstPlayer.setRole(PlayerRole.BATTER);
-		firstPlayer = playerRepository.save(firstPlayer);
+        Player firstPlayer = new Player();
+        firstPlayer.setFirstName("First");
+        firstPlayer.setLastName("Player");
+        firstPlayer.setDisplayName("First Player " + testId);
+        firstPlayer.setRole(PlayerRole.BATTER);
+        firstPlayer = playerRepository.save(firstPlayer);
 
-		TeamPlayer firstTeamPlayer = new TeamPlayer();
-		firstTeamPlayer.setTeam(team);
-		firstTeamPlayer.setPlayer(firstPlayer);
-		firstTeamPlayer.setJerseyNumber(18);
-		teamPlayerRepository.save(firstTeamPlayer);
+        TeamPlayer firstTeamPlayer = new TeamPlayer();
+        firstTeamPlayer.setTeam(team);
+        firstTeamPlayer.setPlayer(firstPlayer);
+        firstTeamPlayer.setJerseyNumber(18);
+        teamPlayerRepository.save(firstTeamPlayer);
 
-		Player secondPlayer = new Player();
-		secondPlayer.setFirstName("Second");
-		secondPlayer.setLastName("Player");
-		secondPlayer.setDisplayName("Second Player " + testId);
-		secondPlayer.setRole(PlayerRole.BATTER);
-		secondPlayer = playerRepository.save(secondPlayer);
+        Player secondPlayer = new Player();
+        secondPlayer.setFirstName("Second");
+        secondPlayer.setLastName("Player");
+        secondPlayer.setDisplayName("Second Player " + testId);
+        secondPlayer.setRole(PlayerRole.BATTER);
+        secondPlayer = playerRepository.save(secondPlayer);
 
-		mockMvc.perform(
-				post("/api/teams/" + team.getId()
-						+ "/players/" + secondPlayer.getId())
-						.contentType(MediaType.APPLICATION_JSON)
-						.content("""
-								{
-									"jerseyNumber": 18
-								}
-								"""))
-				.andExpect(status().isBadRequest())
-				.andExpect(jsonPath("$.status").value(400))
-				.andExpect(jsonPath("$.message")
-						.value("Jersey number is already assigned to an active player"));
-	}
+        Authentication authentication = createAdminAuthentication();
+
+        mockMvc.perform(
+                post("/api/teams/" + team.getId()
+                        + "/players/" + secondPlayer.getId())
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                        "jerseyNumber": 18
+                                }
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message")
+                        .value("Jersey number is already assigned to an active player"));
+        }
 
 	@Test
-	void removePlayerFromTeamShouldDeactivatePlayerAndReleaseJerseyNumber()
-			throws Exception {
+        void removePlayerFromTeamShouldDeactivatePlayerAndReleaseJerseyNumber()
+                throws Exception {
 
-		String testId = String.valueOf(System.currentTimeMillis());
+        String testId = String.valueOf(System.currentTimeMillis());
 
-		Team team = new Team();
-		team.setName("Remove Team " + testId);
-		team.setShortName("REM" + testId);
-		team.setCity("Nellore");
-		team = teamRepository.save(team);
+        Team team = new Team();
+        team.setName("Remove Team " + testId);
+        team.setShortName("REM" + testId);
+        team.setCity("Nellore");
+        team = teamRepository.save(team);
 
-		Player firstPlayer = new Player();
-		firstPlayer.setFirstName("First");
-		firstPlayer.setLastName("Player");
-		firstPlayer.setDisplayName("Remove First " + testId);
-		firstPlayer.setRole(PlayerRole.BATTER);
-		firstPlayer = playerRepository.save(firstPlayer);
+        Player firstPlayer = new Player();
+        firstPlayer.setFirstName("First");
+        firstPlayer.setLastName("Player");
+        firstPlayer.setDisplayName("Remove First " + testId);
+        firstPlayer.setRole(PlayerRole.BATTER);
+        firstPlayer = playerRepository.save(firstPlayer);
 
-		TeamPlayer firstTeamPlayer = new TeamPlayer();
-		firstTeamPlayer.setTeam(team);
-		firstTeamPlayer.setPlayer(firstPlayer);
-		firstTeamPlayer.setJerseyNumber(18);
-		firstTeamPlayer = teamPlayerRepository.save(firstTeamPlayer);
+        TeamPlayer firstTeamPlayer = new TeamPlayer();
+        firstTeamPlayer.setTeam(team);
+        firstTeamPlayer.setPlayer(firstPlayer);
+        firstTeamPlayer.setJerseyNumber(18);
+        firstTeamPlayer = teamPlayerRepository.save(firstTeamPlayer);
 
-		mockMvc.perform(
-				org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-						.delete("/api/teams/" + team.getId()
-								+ "/players/" + firstPlayer.getId()))
-				.andExpect(status().isNoContent());
+        Authentication authentication =
+                createAdminAuthentication();
 
-		TeamPlayer removedPlayer = teamPlayerRepository
-				.findById(firstTeamPlayer.getId())
-				.orElseThrow();
+        mockMvc.perform(
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/teams/" + team.getId()
+                                + "/players/" + firstPlayer.getId())
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isNoContent());
 
-		assertFalse(removedPlayer.getActive());
-		assertTrue(removedPlayer.getLeftAt() != null);
+        TeamPlayer removedPlayer =
+                teamPlayerRepository
+                        .findById(firstTeamPlayer.getId())
+                        .orElseThrow();
 
-		mockMvc.perform(
-				get("/api/teams/" + team.getId() + "/players"))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.length()").value(0));
+        assertFalse(removedPlayer.getActive());
+        assertTrue(removedPlayer.getLeftAt() != null);
 
-		Player secondPlayer = new Player();
-		secondPlayer.setFirstName("Second");
-		secondPlayer.setLastName("Player");
-		secondPlayer.setDisplayName("Remove Second " + testId);
-		secondPlayer.setRole(PlayerRole.BATTER);
-		secondPlayer = playerRepository.save(secondPlayer);
+        mockMvc.perform(
+                get("/api/teams/" + team.getId() + "/players")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.length()").value(0));
 
-		mockMvc.perform(
-				post("/api/teams/" + team.getId()
-						+ "/players/" + secondPlayer.getId())
-						.contentType(MediaType.APPLICATION_JSON)
-						.content("""
-								{
-									"jerseyNumber": 18
-								}
-								"""))
-				.andExpect(status().isCreated());
-	}
+        Player secondPlayer = new Player();
+        secondPlayer.setFirstName("Second");
+        secondPlayer.setLastName("Player");
+        secondPlayer.setDisplayName("Remove Second " + testId);
+        secondPlayer.setRole(PlayerRole.BATTER);
+        secondPlayer = playerRepository.save(secondPlayer);
+
+        mockMvc.perform(
+                post("/api/teams/" + team.getId()
+                        + "/players/" + secondPlayer.getId())
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                        "jerseyNumber": 18
+                                }
+                                """)
+        )
+        .andExpect(status().isCreated());
+        }
 
         @Test
         void removePlayerFromTeamShouldRejectPlayerInFinalizedPlayingXI()
@@ -4192,11 +4312,19 @@ class CricklocalBackendApplicationTests {
                 /*
                 * Finalize the Playing XI.
                 */
+                
+                Authentication authentication = createAdminAuthentication();
+
                 mockMvc.perform(
                         post("/api/matches/" + match.getId()
                                 + "/lineup/team/" + team.getId()
-                                + "/finalize"))
-                        .andExpect(status().isOk());
+                                + "/finalize")
+                                .with(
+                                        SecurityMockMvcRequestPostProcessors
+                                                .authentication(authentication)
+                                )
+                )
+                .andExpect(status().isOk());
 
                 assertTrue(
                         playingXIRepository
@@ -4206,15 +4334,22 @@ class CricklocalBackendApplicationTests {
                 * Attempt to remove a player who is part of
                 * the finalized Playing XI.
                 */
+
                 mockMvc.perform(
                         org.springframework.test.web.servlet.request
                                 .MockMvcRequestBuilders
                                 .delete("/api/teams/" + team.getId()
-                                        + "/players/" + captain.getId()))
-                        .andExpect(status().isBadRequest())
-                        .andExpect(jsonPath("$.message")
-                                .value(
-                                        "Player cannot be removed because they are part of a finalized Playing XI"));
+                                        + "/players/" + captain.getId())
+                                .with(
+                                        SecurityMockMvcRequestPostProcessors
+                                                .authentication(authentication)
+                                )
+                )
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message")
+                        .value(
+                                "Player cannot be removed because they are part of a finalized Playing XI"
+                        ));
 
                 /*
                 * The team membership must remain active.
@@ -4252,9 +4387,15 @@ class CricklocalBackendApplicationTests {
                 teamPlayer.setJerseyNumber(7);
                 teamPlayer = teamPlayerRepository.save(teamPlayer);
 
+                Authentication authentication = createAdminAuthentication();
                 mockMvc.perform(put(
                                 "/api/teams/" + team.getId()
-                                        + "/captain/" + player.getId()))
+                                        + "/captain/" + player.getId())
+                                .with(
+                                        SecurityMockMvcRequestPostProcessors
+                                                .authentication(authentication)
+                                     )
+                                )
                                 .andExpect(status().isOk())
                                 .andExpect(jsonPath("$.teamId").value(team.getId()))
                                 .andExpect(jsonPath("$.teamName")
@@ -4278,133 +4419,160 @@ class CricklocalBackendApplicationTests {
     }
 
 	@Test
-	void getTeamCaptainApiShouldReturnCurrentCaptain() throws Exception {
+        void getTeamCaptainApiShouldReturnCurrentCaptain() throws Exception {
 
-		String testId = String.valueOf(System.currentTimeMillis());
+        String testId = String.valueOf(System.currentTimeMillis());
 
-		Team team = new Team();
-		team.setName("Captain Get Team " + testId);
-		team.setShortName("CGT" + testId);
-		team.setCity("Nellore");
-		team = teamRepository.save(team);
+        Team team = new Team();
+        team.setName("Captain Get Team " + testId);
+        team.setShortName("CGT" + testId);
+        team.setCity("Nellore");
+        team = teamRepository.save(team);
 
-		Player player = new Player();
-		player.setFirstName("Captain");
-		player.setLastName("Get");
-		player.setDisplayName("Captain Get " + testId);
-		player.setRole(PlayerRole.BATTER);
-		player = playerRepository.save(player);
+        Player player = new Player();
+        player.setFirstName("Captain");
+        player.setLastName("Get");
+        player.setDisplayName("Captain Get " + testId);
+        player.setRole(PlayerRole.BATTER);
+        player = playerRepository.save(player);
 
-		TeamPlayer teamPlayer = new TeamPlayer();
-		teamPlayer.setTeam(team);
-		teamPlayer.setPlayer(player);
-		teamPlayer.setJerseyNumber(7);
-		teamPlayer = teamPlayerRepository.save(teamPlayer);
+        TeamPlayer teamPlayer = new TeamPlayer();
+        teamPlayer.setTeam(team);
+        teamPlayer.setPlayer(player);
+        teamPlayer.setJerseyNumber(7);
+        teamPlayer = teamPlayerRepository.save(teamPlayer);
 
-		team.setCaptain(teamPlayer);
-		teamRepository.save(team);
+        team.setCaptain(teamPlayer);
+        teamRepository.save(team);
 
-		mockMvc.perform(
-				get("/api/teams/" + team.getId() + "/captain"))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.teamId").value(team.getId()))
-				.andExpect(jsonPath("$.teamPlayerId").value(teamPlayer.getId()))
-				.andExpect(jsonPath("$.playerId").value(player.getId()))
-				.andExpect(jsonPath("$.displayName")
-						.value("Captain Get " + testId))
-				.andExpect(jsonPath("$.jerseyNumber").value(7))
-				.andExpect(jsonPath("$.active").value(true));
-	}
+        Authentication authentication = createAdminAuthentication();
 
-	@Test
-	void removeCaptainFromTeamShouldClearCaptain() throws Exception {
+        mockMvc.perform(
+                get("/api/teams/" + team.getId() + "/captain")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.teamId").value(team.getId()))
+        .andExpect(jsonPath("$.teamPlayerId").value(teamPlayer.getId()))
+        .andExpect(jsonPath("$.playerId").value(player.getId()))
+        .andExpect(jsonPath("$.displayName")
+                .value("Captain Get " + testId))
+        .andExpect(jsonPath("$.jerseyNumber").value(7))
+        .andExpect(jsonPath("$.active").value(true));
+        }
 
-		String testId = String.valueOf(System.currentTimeMillis());
+        @Test
+        void removeCaptainFromTeamShouldClearCaptain() throws Exception {
 
-		Team team = new Team();
-		team.setName("Captain Remove Team " + testId);
-		team.setShortName("CRT" + testId);
-		team.setCity("Nellore");
-		team = teamRepository.save(team);
+        String testId = String.valueOf(System.currentTimeMillis());
 
-		Player captain = new Player();
-		captain.setFirstName("Captain");
-		captain.setLastName("Player");
-		captain.setDisplayName("Captain Player " + testId);
-		captain.setRole(PlayerRole.BATTER);
-		captain = playerRepository.save(captain);
+        Team team = new Team();
+        team.setName("Captain Remove Team " + testId);
+        team.setShortName("CRT" + testId);
+        team.setCity("Nellore");
+        team = teamRepository.save(team);
 
-		TeamPlayer teamPlayer = new TeamPlayer();
-		teamPlayer.setTeam(team);
-		teamPlayer.setPlayer(captain);
-		teamPlayer.setJerseyNumber(7);
-		teamPlayer = teamPlayerRepository.save(teamPlayer);
+        Player captain = new Player();
+        captain.setFirstName("Captain");
+        captain.setLastName("Player");
+        captain.setDisplayName("Captain Player " + testId);
+        captain.setRole(PlayerRole.BATTER);
+        captain = playerRepository.save(captain);
 
-		mockMvc.perform(
-				put("/api/teams/" + team.getId()
-						+ "/captain/" + captain.getId()))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.playerId").value(captain.getId()));
+        TeamPlayer teamPlayer = new TeamPlayer();
+        teamPlayer.setTeam(team);
+        teamPlayer.setPlayer(captain);
+        teamPlayer.setJerseyNumber(7);
+        teamPlayer = teamPlayerRepository.save(teamPlayer);
 
-		mockMvc.perform(
-				org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-						.delete("/api/teams/" + team.getId()
-								+ "/players/" + captain.getId()))
-				.andExpect(status().isNoContent());
+        Authentication authentication = createAdminAuthentication();
 
-		Team updatedTeam = teamRepository.findById(team.getId())
-				.orElseThrow();
+        mockMvc.perform(
+                put("/api/teams/" + team.getId()
+                        + "/captain/" + captain.getId())
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.playerId").value(captain.getId()));
 
-		assertTrue(updatedTeam.getCaptain() == null);
+        mockMvc.perform(
+                org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .delete("/api/teams/" + team.getId()
+                                + "/players/" + captain.getId())
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isNoContent());
 
-		TeamPlayer removedCaptain = teamPlayerRepository
-				.findById(teamPlayer.getId())
-				.orElseThrow();
+        Team updatedTeam = teamRepository.findById(team.getId())
+                .orElseThrow();
 
-		assertFalse(removedCaptain.getActive());
-		assertTrue(removedCaptain.getLeftAt() != null);
-	}
+        assertTrue(updatedTeam.getCaptain() == null);
 
-    @Test
-    void getTeamPlayersApiShouldReturnNonRecursiveRosterResponses() throws Exception {
+        TeamPlayer removedCaptain = teamPlayerRepository
+                .findById(teamPlayer.getId())
+                .orElseThrow();
 
-                String testId = String.valueOf(System.currentTimeMillis());
+        assertFalse(removedCaptain.getActive());
+        assertTrue(removedCaptain.getLeftAt() != null);
+        }
 
-                Team team = new Team();
-                team.setName("Roster Team " + testId);
-                team.setShortName("ROS" + testId);
-                team.setCity("Nellore");
-                team = teamRepository.save(team);
+        @Test
+        void getTeamPlayersApiShouldReturnNonRecursiveRosterResponses() throws Exception {
 
-                Player player = new Player();
-                player.setFirstName("Roster");
-                player.setLastName("Player");
-                player.setDisplayName("Roster Player " + testId);
-                player.setRole(PlayerRole.BATTER);
-                player = playerRepository.save(player);
+        String testId = String.valueOf(System.currentTimeMillis());
 
-                TeamPlayer teamPlayer = new TeamPlayer();
-                teamPlayer.setTeam(team);
-                teamPlayer.setPlayer(player);
-                teamPlayer.setJerseyNumber(18);
-                teamPlayer = teamPlayerRepository.save(teamPlayer);
+        Team team = new Team();
+        team.setName("Roster Team " + testId);
+        team.setShortName("ROS" + testId);
+        team.setCity("Nellore");
+        team = teamRepository.save(team);
 
-                mockMvc.perform(get("/api/teams/" + team.getId() + "/players"))
-                                .andExpect(status().isOk())
-                                .andExpect(jsonPath("$").isArray())
-                                .andExpect(jsonPath("$.length()").value(1))
-                                .andExpect(jsonPath("$[0].teamPlayerId")
-                                                .value(teamPlayer.getId()))
-                                .andExpect(jsonPath("$[0].playerId")
-                                                .value(player.getId()))
-                                .andExpect(jsonPath("$[0].displayName")
-                                                .value("Roster Player " + testId))
-                                .andExpect(jsonPath("$[0].jerseyNumber").value(18))
-                                .andExpect(jsonPath("$[0].active").value(true))
-                                .andExpect(jsonPath("$[0].team").doesNotExist())
-                                .andExpect(jsonPath("$[0].player").doesNotExist())
-                                .andExpect(jsonPath("$[0].captain").doesNotExist());
-    }
+        Player player = new Player();
+        player.setFirstName("Roster");
+        player.setLastName("Player");
+        player.setDisplayName("Roster Player " + testId);
+        player.setRole(PlayerRole.BATTER);
+        player = playerRepository.save(player);
+
+        TeamPlayer teamPlayer = new TeamPlayer();
+        teamPlayer.setTeam(team);
+        teamPlayer.setPlayer(player);
+        teamPlayer.setJerseyNumber(18);
+        teamPlayer = teamPlayerRepository.save(teamPlayer);
+
+        Authentication authentication = createAdminAuthentication();
+
+        mockMvc.perform(
+                get("/api/teams/" + team.getId() + "/players")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$").isArray())
+        .andExpect(jsonPath("$.length()").value(1))
+        .andExpect(jsonPath("$[0].teamPlayerId")
+                .value(teamPlayer.getId()))
+        .andExpect(jsonPath("$[0].playerId")
+                .value(player.getId()))
+        .andExpect(jsonPath("$[0].displayName")
+                .value("Roster Player " + testId))
+        .andExpect(jsonPath("$[0].jerseyNumber").value(18))
+        .andExpect(jsonPath("$[0].active").value(true))
+        .andExpect(jsonPath("$[0].team").doesNotExist())
+        .andExpect(jsonPath("$[0].player").doesNotExist())
+        .andExpect(jsonPath("$[0].captain").doesNotExist());
+        }
 
 	@Test
 	void addPlayerToTeamApiShouldReturnSafeRosterResponse()
@@ -4418,6 +4586,18 @@ class CricklocalBackendApplicationTests {
 		team.setCity("Nellore");
 		team = teamRepository.save(team);
 
+                System.out.println("===== PERMISSION TEST DIAGNOSTIC =====");
+
+                User admin = createPlayerRegistrationTestUser();
+
+                System.out.println("Admin ID       = " + admin.getId());
+                System.out.println("Admin Email    = " + admin.getEmail());
+                System.out.println("Admin Role     = " + admin.getRole());
+                System.out.println("Account Status = " + admin.getAccountStatus());
+                System.out.println("Active         = " + admin.getActive());
+
+                System.out.println("======================================");
+
 		Player player = new Player();
 		player.setFirstName("Response");
 		player.setLastName("Player");
@@ -4426,14 +4606,15 @@ class CricklocalBackendApplicationTests {
 		player = playerRepository.save(player);
 
 		mockMvc.perform(
-				post("/api/teams/" + team.getId()
-						+ "/players/" + player.getId())
-						.contentType(MediaType.APPLICATION_JSON)
-						.content("""
-								{
-									"jerseyNumber": 18
-								}
-								"""))
+                                post("/api/teams/" + team.getId()
+                                        + "/players/" + player.getId())
+                                        .with(authentication(createAdminAuthentication()))
+                                        .contentType(MediaType.APPLICATION_JSON)
+                                        .content("""
+                                        {
+                                        "jerseyNumber": 18
+                                        }
+                                        """))
 				.andExpect(status().isCreated())
 				.andExpect(jsonPath("$.teamPlayerId").exists())
 				.andExpect(jsonPath("$.playerId").value(player.getId()))
@@ -4491,10 +4672,15 @@ class CricklocalBackendApplicationTests {
 		existingMembership.setJerseyNumber(18);
 		teamPlayerRepository.save(existingMembership);
 
+                Authentication authentication = createAdminAuthentication();
 		mockMvc.perform(
 				post("/api/teams/" + secondTeam.getId()
 						+ "/players/" + player.getId())
-					.contentType(MediaType.APPLICATION_JSON)
+					.with(
+                                                SecurityMockMvcRequestPostProcessors
+                                                        .authentication(authentication)
+                                        )
+                                        .contentType(MediaType.APPLICATION_JSON)
 					.content("""
 						{
 						"jerseyNumber": 27
@@ -4510,74 +4696,80 @@ class CricklocalBackendApplicationTests {
 	}
 
 	@Test
-	void addPlayerToTeamInDifferentSeriesShouldBeAllowed() throws Exception {
-		String testId = String.valueOf(System.currentTimeMillis());
+        void addPlayerToTeamInDifferentSeriesShouldBeAllowed() throws Exception {
+        String testId = String.valueOf(System.currentTimeMillis());
 
-		Team firstTeam = new Team();
-		firstTeam.setName("Different Series Team One " + testId);
-		firstTeam.setShortName("DS1" + testId);
-		firstTeam.setCity("Nellore");
-		firstTeam = teamRepository.save(firstTeam);
+        Team firstTeam = new Team();
+        firstTeam.setName("Different Series Team One " + testId);
+        firstTeam.setShortName("DS1" + testId);
+        firstTeam.setCity("Nellore");
+        firstTeam = teamRepository.save(firstTeam);
 
-		Team secondTeam = new Team();
-		secondTeam.setName("Different Series Team Two " + testId);
-		secondTeam.setShortName("DS2" + testId);
-		secondTeam.setCity("Nellore");
-		secondTeam = teamRepository.save(secondTeam);
+        Team secondTeam = new Team();
+        secondTeam.setName("Different Series Team Two " + testId);
+        secondTeam.setShortName("DS2" + testId);
+        secondTeam.setCity("Nellore");
+        secondTeam = teamRepository.save(secondTeam);
 
-		Series firstSeries = new Series();
-		firstSeries.setName("First Series " + testId);
-		firstSeries.setTotalMatches(5);
-		firstSeries.setStartDate(java.time.LocalDate.now());
-		firstSeries = seriesRepository.save(firstSeries);
+        Series firstSeries = new Series();
+        firstSeries.setName("First Series " + testId);
+        firstSeries.setTotalMatches(5);
+        firstSeries.setStartDate(java.time.LocalDate.now());
+        firstSeries = seriesRepository.save(firstSeries);
 
-		Series secondSeries = new Series();
-		secondSeries.setName("Second Series " + testId);
-		secondSeries.setTotalMatches(5);
-		secondSeries.setStartDate(java.time.LocalDate.now());
-		secondSeries = seriesRepository.save(secondSeries);
+        Series secondSeries = new Series();
+        secondSeries.setName("Second Series " + testId);
+        secondSeries.setTotalMatches(5);
+        secondSeries.setStartDate(java.time.LocalDate.now());
+        secondSeries = seriesRepository.save(secondSeries);
 
-		SeriesTeam firstSeriesTeam = new SeriesTeam();
-		firstSeriesTeam.setSeries(firstSeries);
-		firstSeriesTeam.setTeam(firstTeam);
-		seriesTeamRepository.save(firstSeriesTeam);
+        SeriesTeam firstSeriesTeam = new SeriesTeam();
+        firstSeriesTeam.setSeries(firstSeries);
+        firstSeriesTeam.setTeam(firstTeam);
+        seriesTeamRepository.save(firstSeriesTeam);
 
-		SeriesTeam secondSeriesTeam = new SeriesTeam();
-		secondSeriesTeam.setSeries(secondSeries);
-		secondSeriesTeam.setTeam(secondTeam);
-		seriesTeamRepository.save(secondSeriesTeam);
+        SeriesTeam secondSeriesTeam = new SeriesTeam();
+        secondSeriesTeam.setSeries(secondSeries);
+        secondSeriesTeam.setTeam(secondTeam);
+        seriesTeamRepository.save(secondSeriesTeam);
 
-		Player player = new Player();
-		player.setFirstName("Different");
-		player.setLastName("Series");
-		player.setDisplayName("Different Series Player " + testId);
-		player.setRole(PlayerRole.BATTER);
-		player = playerRepository.save(player);
+        Player player = new Player();
+        player.setFirstName("Different");
+        player.setLastName("Series");
+        player.setDisplayName("Different Series Player " + testId);
+        player.setRole(PlayerRole.BATTER);
+        player = playerRepository.save(player);
 
-		TeamPlayer existingMembership = new TeamPlayer();
-		existingMembership.setTeam(firstTeam);
-		existingMembership.setPlayer(player);
-		existingMembership.setJerseyNumber(18);
-		teamPlayerRepository.save(existingMembership);
+        TeamPlayer existingMembership = new TeamPlayer();
+        existingMembership.setTeam(firstTeam);
+        existingMembership.setPlayer(player);
+        existingMembership.setJerseyNumber(18);
+        teamPlayerRepository.save(existingMembership);
 
-		mockMvc.perform(
-				post("/api/teams/" + secondTeam.getId()
-						+ "/players/" + player.getId())
-					.contentType(MediaType.APPLICATION_JSON)
-					.content("""
-						{
-						"jerseyNumber": 27
-						}
-						"""))
-			.andExpect(status().isCreated())
-			.andExpect(jsonPath("$.playerId").value(player.getId()))
-			.andExpect(jsonPath("$.jerseyNumber").value(27))
-			.andExpect(jsonPath("$.active").value(true));
+        Authentication authentication = createAdminAuthentication();
 
-		assertTrue(
-				teamPlayerRepository.findByTeamAndPlayer(secondTeam, player)
-						.isPresent());
-	}
+        mockMvc.perform(
+                post("/api/teams/" + secondTeam.getId()
+                        + "/players/" + player.getId())
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                        "jerseyNumber": 27
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.playerId").value(player.getId()))
+                .andExpect(jsonPath("$.jerseyNumber").value(27))
+                .andExpect(jsonPath("$.active").value(true));
+
+        assertTrue(
+                teamPlayerRepository.findByTeamAndPlayer(secondTeam, player)
+                        .isPresent());
+        }
 
 	@Test
 	void addPlayerToTeamShouldAllowInactiveMembershipInSameSeries() throws Exception {
@@ -4626,15 +4818,21 @@ class CricklocalBackendApplicationTests {
 		previousMembership.setLeftAt(java.time.Instant.now());
 		teamPlayerRepository.save(previousMembership);
 
-		mockMvc.perform(
-				post("/api/teams/" + secondTeam.getId()
-						+ "/players/" + player.getId())
-					.contentType(MediaType.APPLICATION_JSON)
-					.content("""
-						{
-						"jerseyNumber": 27
-						}
-						"""))
+                Authentication authentication = createAdminAuthentication();
+
+                mockMvc.perform(
+                        post("/api/teams/" + secondTeam.getId()
+                                        + "/players/" + player.getId())
+                                .with(
+                                        SecurityMockMvcRequestPostProcessors
+                                                .authentication(authentication)
+                                )
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                        "jerseyNumber": 27
+                                        }
+                                        """))
 			.andExpect(status().isCreated())
 			.andExpect(jsonPath("$.playerId").value(player.getId()))
 			.andExpect(jsonPath("$.jerseyNumber").value(27))
@@ -4645,19 +4843,23 @@ class CricklocalBackendApplicationTests {
 						.isPresent());
 	}
 
-    @Test
-    void finalizePlayingXIShouldCreatePlayingXIForExactlyElevenPlayersWithCaptain() throws Exception {
+        @Test
+        void finalizePlayingXIShouldCreatePlayingXIForExactlyElevenPlayersWithCaptain()
+                throws Exception {
+
         String testId = String.valueOf(System.nanoTime());
 
         Team teamA = new Team();
         teamA.setName("XI Team A " + testId);
-        teamA.setShortName("XIA" + testId.substring(testId.length() - 3));
+        teamA.setShortName(
+                "XIA" + testId.substring(testId.length() - 3));
         teamA.setCity("Test City");
         teamA = teamRepository.save(teamA);
 
         Team teamB = new Team();
         teamB.setName("XI Team B " + testId);
-        teamB.setShortName("XIB" + testId.substring(testId.length() - 3));
+        teamB.setShortName(
+                "XIB" + testId.substring(testId.length() - 3));
         teamB.setCity("Test City");
         teamB = teamRepository.save(teamB);
 
@@ -4667,7 +4869,8 @@ class CricklocalBackendApplicationTests {
         match.setFormat(MatchFormat.T20);
         match.setTotalOvers(20);
         match.setMaxPlayersPerTeam(11);
-        match.setScheduledAt(Instant.parse("2027-01-01T10:00:00Z"));
+        match.setScheduledAt(
+                Instant.parse("2027-01-01T10:00:00Z"));
         match.setStatus(MatchStatus.SCHEDULED);
         match = matchRepository.save(match);
 
@@ -4683,7 +4886,12 @@ class CricklocalBackendApplicationTests {
         matchTeamB.setSide(MatchTeamSide.TEAM_B);
         matchTeamRepository.save(matchTeamB);
 
-        Player captain = createPlayer("XI Captain", "Player", "XI Captain " + testId, PlayerRole.BATTER);
+        Player captain = createPlayer(
+                "XI Captain",
+                "Player",
+                "XI Captain " + testId,
+                PlayerRole.BATTER
+        );
 
         TeamPlayer captainMembership = new TeamPlayer();
         captainMembership.setTeam(teamA);
@@ -4702,57 +4910,81 @@ class CricklocalBackendApplicationTests {
         matchLineupRepository.save(captainLineup);
 
         for (int i = 2; i <= 11; i++) {
-            Player player = createPlayer(
-                    "XI Player " + i,
-                    "Test",
-                    "XI Player " + i + " " + testId,
-                    PlayerRole.BATTER);
 
-            TeamPlayer membership = new TeamPlayer();
-            membership.setTeam(teamA);
-            membership.setPlayer(player);
-            membership.setJerseyNumber(i);
-            membership.setActive(true);
-            teamPlayerRepository.save(membership);
+                Player player = createPlayer(
+                        "XI Player " + i,
+                        "Test",
+                        "XI Player " + i + " " + testId,
+                        PlayerRole.BATTER
+                );
 
-            createLineup(match, teamA, player, i);
+                TeamPlayer membership = new TeamPlayer();
+                membership.setTeam(teamA);
+                membership.setPlayer(player);
+                membership.setJerseyNumber(i);
+                membership.setActive(true);
+                teamPlayerRepository.save(membership);
+
+                createLineup(match, teamA, player, i);
 
                 if (i == 2) {
-                MatchLineup wicketKeeperLineup = matchLineupRepository
-                        .findByMatchAndPlayer(match, player)
-                        .orElseThrow();
+                MatchLineup wicketKeeperLineup =
+                        matchLineupRepository
+                                .findByMatchAndPlayer(match, player)
+                                .orElseThrow();
 
                 wicketKeeperLineup.setWicketKeeper(true);
                 matchLineupRepository.save(wicketKeeperLineup);
                 }
         }
 
+        Authentication authentication =
+                createAdminAuthentication();
+
         mockMvc.perform(
                 post("/api/matches/" + match.getId()
-                        + "/lineup/team/" + teamA.getId() + "/finalize"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.matchId").value(match.getId()))
-                .andExpect(jsonPath("$.teamId").value(teamA.getId()))
-                .andExpect(jsonPath("$.playerCount").value(11))
-                .andExpect(jsonPath("$.captainPlayerId").value(captain.getId()))
-                .andExpect(jsonPath("$.captainName").value(captain.getDisplayName()));
+                        + "/lineup/team/" + teamA.getId()
+                        + "/finalize")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.matchId")
+                .value(match.getId()))
+        .andExpect(jsonPath("$.teamId")
+                .value(teamA.getId()))
+        .andExpect(jsonPath("$.playerCount")
+                .value(11))
+        .andExpect(jsonPath("$.captainPlayerId")
+                .value(captain.getId()))
+        .andExpect(jsonPath("$.captainName")
+                .value(captain.getDisplayName()));
 
-        assertTrue(playingXIRepository.existsByMatchAndTeam(match, teamA));
+        assertTrue(
+                playingXIRepository
+                        .existsByMatchAndTeam(match, teamA)
+        );
     }
 
-    @Test
-    void finalizePlayingXIShouldRejectWhenTeamHasFewerThanElevenPlayers() throws Exception {
+        @Test
+        void finalizePlayingXIShouldRejectWhenTeamHasFewerThanElevenPlayers()
+                throws Exception {
+
         String testId = String.valueOf(System.nanoTime());
 
         Team teamA = new Team();
         teamA.setName("XI Validation A " + testId);
-        teamA.setShortName("XVA" + testId.substring(testId.length() - 3));
+        teamA.setShortName(
+                "XVA" + testId.substring(testId.length() - 3));
         teamA.setCity("Test City");
         teamA = teamRepository.save(teamA);
 
         Team teamB = new Team();
         teamB.setName("XI Validation B " + testId);
-        teamB.setShortName("XVB" + testId.substring(testId.length() - 3));
+        teamB.setShortName(
+                "XVB" + testId.substring(testId.length() - 3));
         teamB.setCity("Test City");
         teamB = teamRepository.save(teamB);
 
@@ -4762,7 +4994,8 @@ class CricklocalBackendApplicationTests {
         match.setFormat(MatchFormat.T20);
         match.setTotalOvers(20);
         match.setMaxPlayersPerTeam(11);
-        match.setScheduledAt(Instant.parse("2027-01-02T10:00:00Z"));
+        match.setScheduledAt(
+                Instant.parse("2027-01-02T10:00:00Z"));
         match.setStatus(MatchStatus.SCHEDULED);
         match = matchRepository.save(match);
 
@@ -4779,45 +5012,65 @@ class CricklocalBackendApplicationTests {
         matchTeamRepository.save(matchTeamB);
 
         for (int i = 1; i <= 10; i++) {
-            Player player = createPlayer(
-                    "Validation Player " + i,
-                    "Test",
-                    "Validation Player " + i + " " + testId,
-                    PlayerRole.BATTER);
 
-            TeamPlayer membership = new TeamPlayer();
-            membership.setTeam(teamA);
-            membership.setPlayer(player);
-            membership.setJerseyNumber(i);
-            membership.setActive(true);
-            teamPlayerRepository.save(membership);
+                Player player = createPlayer(
+                        "Validation Player " + i,
+                        "Test",
+                        "Validation Player " + i + " " + testId,
+                        PlayerRole.BATTER
+                );
 
-            createLineup(match, teamA, player, i);
+                TeamPlayer membership = new TeamPlayer();
+                membership.setTeam(teamA);
+                membership.setPlayer(player);
+                membership.setJerseyNumber(i);
+                membership.setActive(true);
+                teamPlayerRepository.save(membership);
+
+                createLineup(match, teamA, player, i);
         }
+
+        Authentication authentication =
+                createAdminAuthentication();
 
         mockMvc.perform(
                 post("/api/matches/" + match.getId()
-                        + "/lineup/team/" + teamA.getId() + "/finalize"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message")
-                        .value("Exactly 11 players must be selected for the Playing XI"));
+                        + "/lineup/team/" + teamA.getId()
+                        + "/finalize")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message")
+                .value(
+                        "Exactly 11 players must be selected for the Playing XI"
+                ));
 
-        assertFalse(playingXIRepository.existsByMatchAndTeam(match, teamA));
-    }
+        assertFalse(
+                playingXIRepository
+                        .existsByMatchAndTeam(match, teamA)
+        );
+        }
 
-    @Test
-    void finalizePlayingXIShouldRejectWhenCaptainIsNotInPlayingXI() throws Exception {
+        @Test
+        void finalizePlayingXIShouldRejectWhenCaptainIsNotInPlayingXI()
+                throws Exception {
+
         String testId = String.valueOf(System.nanoTime());
 
         Team teamA = new Team();
         teamA.setName("Captain Validation A " + testId);
-        teamA.setShortName("CVA" + testId.substring(testId.length() - 3));
+        teamA.setShortName(
+                "CVA" + testId.substring(testId.length() - 3));
         teamA.setCity("Test City");
         teamA = teamRepository.save(teamA);
 
         Team teamB = new Team();
         teamB.setName("Captain Validation B " + testId);
-        teamB.setShortName("CVB" + testId.substring(testId.length() - 3));
+        teamB.setShortName(
+                "CVB" + testId.substring(testId.length() - 3));
         teamB.setCity("Test City");
         teamB = teamRepository.save(teamB);
 
@@ -4827,7 +5080,8 @@ class CricklocalBackendApplicationTests {
         match.setFormat(MatchFormat.T20);
         match.setTotalOvers(20);
         match.setMaxPlayersPerTeam(11);
-        match.setScheduledAt(Instant.parse("2027-01-03T10:00:00Z"));
+        match.setScheduledAt(
+                Instant.parse("2027-01-03T10:00:00Z"));
         match.setStatus(MatchStatus.SCHEDULED);
         match = matchRepository.save(match);
 
@@ -4847,7 +5101,8 @@ class CricklocalBackendApplicationTests {
                 "Captain",
                 "Not Playing",
                 "Captain Not Playing " + testId,
-                PlayerRole.BATTER);
+                PlayerRole.BATTER
+        );
 
         TeamPlayer captainMembership = new TeamPlayer();
         captainMembership.setTeam(teamA);
@@ -4867,45 +5122,63 @@ class CricklocalBackendApplicationTests {
         matchLineupRepository.save(captainLineup);
 
         for (int i = 2; i <= 12; i++) {
-            Player player = createPlayer(
-                    "Playing Player " + i,
-                    "Test",
-                    "Playing Player " + i + " " + testId,
-                    PlayerRole.BATTER);
 
-            TeamPlayer membership = new TeamPlayer();
-            membership.setTeam(teamA);
-            membership.setPlayer(player);
-            membership.setJerseyNumber(i);
-            membership.setActive(true);
-            teamPlayerRepository.save(membership);
+                Player player = createPlayer(
+                        "Playing Player " + i,
+                        "Test",
+                        "Playing Player " + i + " " + testId,
+                        PlayerRole.BATTER
+                );
 
-            createLineup(match, teamA, player, i);
+                TeamPlayer membership = new TeamPlayer();
+                membership.setTeam(teamA);
+                membership.setPlayer(player);
+                membership.setJerseyNumber(i);
+                membership.setActive(true);
+                teamPlayerRepository.save(membership);
+
+                createLineup(match, teamA, player, i);
         }
+
+        Authentication authentication =
+                createAdminAuthentication();
 
         mockMvc.perform(
                 post("/api/matches/" + match.getId()
-                        + "/lineup/team/" + teamA.getId() + "/finalize"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message")
-                        .value("Captain must be part of the Playing XI"));
+                        + "/lineup/team/" + teamA.getId()
+                        + "/finalize")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message")
+                .value("Captain must be part of the Playing XI"));
 
-        assertFalse(playingXIRepository.existsByMatchAndTeam(match, teamA));
-    }
+        assertFalse(
+                playingXIRepository
+                        .existsByMatchAndTeam(match, teamA)
+        );
+        }
 
-    @Test
-    void finalizePlayingXIShouldRejectSecondFinalizationForSameTeam() throws Exception {
+        @Test
+        void finalizePlayingXIShouldRejectSecondFinalizationForSameTeam()
+                throws Exception {
+
         String testId = String.valueOf(System.nanoTime());
 
         Team teamA = new Team();
         teamA.setName("Repeat XI A " + testId);
-        teamA.setShortName("RXA" + testId.substring(testId.length() - 3));
+        teamA.setShortName(
+                "RXA" + testId.substring(testId.length() - 3));
         teamA.setCity("Test City");
         teamA = teamRepository.save(teamA);
 
         Team teamB = new Team();
         teamB.setName("Repeat XI B " + testId);
-        teamB.setShortName("RXB" + testId.substring(testId.length() - 3));
+        teamB.setShortName(
+                "RXB" + testId.substring(testId.length() - 3));
         teamB.setCity("Test City");
         teamB = teamRepository.save(teamB);
 
@@ -4915,7 +5188,8 @@ class CricklocalBackendApplicationTests {
         match.setFormat(MatchFormat.T20);
         match.setTotalOvers(20);
         match.setMaxPlayersPerTeam(11);
-        match.setScheduledAt(Instant.parse("2027-01-04T10:00:00Z"));
+        match.setScheduledAt(
+                Instant.parse("2027-01-04T10:00:00Z"));
         match.setStatus(MatchStatus.SCHEDULED);
         match = matchRepository.save(match);
 
@@ -4936,7 +5210,8 @@ class CricklocalBackendApplicationTests {
                 "Repeat Captain",
                 "Test",
                 "Repeat Captain " + testId,
-                PlayerRole.BATTER);
+                PlayerRole.BATTER
+        );
 
         TeamPlayer captainMembership = new TeamPlayer();
         captainMembership.setTeam(teamA);
@@ -4957,11 +5232,13 @@ class CricklocalBackendApplicationTests {
         // Create remaining 10 players.
         // Player 2 will be the Wicket Keeper.
         for (int i = 2; i <= 11; i++) {
+
                 Player player = createPlayer(
                         "Repeat Player " + i,
                         "Test",
                         "Repeat Player " + i + " " + testId,
-                        PlayerRole.BATTER);
+                        PlayerRole.BATTER
+                );
 
                 TeamPlayer membership = new TeamPlayer();
                 membership.setTeam(teamA);
@@ -4973,9 +5250,10 @@ class CricklocalBackendApplicationTests {
                 createLineup(match, teamA, player, i);
 
                 if (i == 2) {
-                MatchLineup wicketKeeperLineup = matchLineupRepository
-                        .findByMatchAndPlayer(match, player)
-                        .orElseThrow();
+                MatchLineup wicketKeeperLineup =
+                        matchLineupRepository
+                                .findByMatchAndPlayer(match, player)
+                                .orElseThrow();
 
                 wicketKeeperLineup.setWicketKeeper(true);
                 matchLineupRepository.save(wicketKeeperLineup);
@@ -4983,38 +5261,61 @@ class CricklocalBackendApplicationTests {
         }
 
         // First finalization should succeed.
+        Authentication authentication =
+                createAdminAuthentication();
+
         mockMvc.perform(
                 post("/api/matches/" + match.getId()
-                        + "/lineup/team/" + teamA.getId() + "/finalize"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.playerCount").value(11));
+                        + "/lineup/team/" + teamA.getId()
+                        + "/finalize")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.playerCount").value(11));
 
         // Second finalization should be rejected.
         mockMvc.perform(
                 post("/api/matches/" + match.getId()
-                        + "/lineup/team/" + teamA.getId() + "/finalize"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message")
-                        .value("Playing XI has already been finalized for this team"));
+                        + "/lineup/team/" + teamA.getId()
+                        + "/finalize")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message")
+                .value(
+                        "Playing XI has already been finalized for this team"
+                ));
 
-        assertTrue(playingXIRepository
-                .findByMatchAndTeam(match, teamA)
-                .isPresent());
-    }
+        assertTrue(
+                playingXIRepository
+                        .findByMatchAndTeam(match, teamA)
+                        .isPresent()
+        );
+        }
 
-    @Test
-    void finalizePlayingXIShouldRejectInactivePlayingXIPlayer() throws Exception {
+        @Test
+        void finalizePlayingXIShouldRejectInactivePlayingXIPlayer()
+                throws Exception {
+
         String testId = String.valueOf(System.nanoTime());
 
         Team teamA = new Team();
         teamA.setName("Inactive XI A " + testId);
-        teamA.setShortName("IXA" + testId.substring(testId.length() - 3));
+        teamA.setShortName(
+                "IXA" + testId.substring(testId.length() - 3));
         teamA.setCity("Test City");
         teamA = teamRepository.save(teamA);
 
         Team teamB = new Team();
         teamB.setName("Inactive XI B " + testId);
-        teamB.setShortName("IXB" + testId.substring(testId.length() - 3));
+        teamB.setShortName(
+                "IXB" + testId.substring(testId.length() - 3));
         teamB.setCity("Test City");
         teamB = teamRepository.save(teamB);
 
@@ -5024,7 +5325,8 @@ class CricklocalBackendApplicationTests {
         match.setFormat(MatchFormat.T20);
         match.setTotalOvers(20);
         match.setMaxPlayersPerTeam(11);
-        match.setScheduledAt(Instant.parse("2027-01-05T10:00:00Z"));
+        match.setScheduledAt(
+                Instant.parse("2027-01-05T10:00:00Z"));
         match.setStatus(MatchStatus.SCHEDULED);
         match = matchRepository.save(match);
 
@@ -5045,7 +5347,8 @@ class CricklocalBackendApplicationTests {
                 "Inactive Captain",
                 "Test",
                 "Inactive Captain " + testId,
-                PlayerRole.BATTER);
+                PlayerRole.BATTER
+        );
 
         TeamPlayer captainMembership = new TeamPlayer();
         captainMembership.setTeam(teamA);
@@ -5067,11 +5370,13 @@ class CricklocalBackendApplicationTests {
         // Player 2 will be the valid Wicket Keeper.
         // Player 11 will intentionally be inactive.
         for (int i = 2; i <= 11; i++) {
+
                 Player player = createPlayer(
                         "Inactive XI Player " + i,
                         "Test",
                         "Inactive XI Player " + i + " " + testId,
-                        PlayerRole.BATTER);
+                        PlayerRole.BATTER
+                );
 
                 TeamPlayer membership = new TeamPlayer();
                 membership.setTeam(teamA);
@@ -5083,9 +5388,10 @@ class CricklocalBackendApplicationTests {
                 createLineup(match, teamA, player, i);
 
                 if (i == 2) {
-                MatchLineup wicketKeeperLineup = matchLineupRepository
-                        .findByMatchAndPlayer(match, player)
-                        .orElseThrow();
+                MatchLineup wicketKeeperLineup =
+                        matchLineupRepository
+                                .findByMatchAndPlayer(match, player)
+                                .orElseThrow();
 
                 wicketKeeperLineup.setWicketKeeper(true);
                 matchLineupRepository.save(wicketKeeperLineup);
@@ -5099,43 +5405,60 @@ class CricklocalBackendApplicationTests {
         }
 
         // Finalization should fail because player 11 is inactive.
+        Authentication authentication =
+                createAdminAuthentication();
+
         mockMvc.perform(
                 post("/api/matches/" + match.getId()
-                        + "/lineup/team/" + teamA.getId() + "/finalize"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message")
-                        .value(org.hamcrest.Matchers.containsString(
-                                "Playing XI contains an inactive team member")));
-    }
+                        + "/lineup/team/" + teamA.getId()
+                        + "/finalize")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message")
+                .value(
+                        org.hamcrest.Matchers.containsString(
+                                "Playing XI contains an inactive team member"
+                        )
+                ));
+        }
 
-    @Test
-    void finalizePlayingXIShouldRejectPlayerWithFinalizedPlayingXIAtSameScheduledTime()
+        @Test
+        void finalizePlayingXIShouldRejectPlayerWithFinalizedPlayingXIAtSameScheduledTime()
                 throws Exception {
 
         String testId = String.valueOf(System.nanoTime());
-        Instant scheduledAt = Instant.parse("2027-01-06T10:00:00Z");
+        Instant scheduledAt =
+                Instant.parse("2027-01-06T10:00:00Z");
 
         Team teamA = new Team();
         teamA.setName("Conflict Team A " + testId);
-        teamA.setShortName("CTA" + testId.substring(testId.length() - 3));
+        teamA.setShortName(
+                "CTA" + testId.substring(testId.length() - 3));
         teamA.setCity("Test City");
         teamA = teamRepository.save(teamA);
 
         Team teamB = new Team();
         teamB.setName("Conflict Team B " + testId);
-        teamB.setShortName("CTB" + testId.substring(testId.length() - 3));
+        teamB.setShortName(
+                "CTB" + testId.substring(testId.length() - 3));
         teamB.setCity("Test City");
         teamB = teamRepository.save(teamB);
 
         Team teamC = new Team();
         teamC.setName("Conflict Team C " + testId);
-        teamC.setShortName("CTC" + testId.substring(testId.length() - 3));
+        teamC.setShortName(
+                "CTC" + testId.substring(testId.length() - 3));
         teamC.setCity("Test City");
         teamC = teamRepository.save(teamC);
 
         Team teamD = new Team();
         teamD.setName("Conflict Team D " + testId);
-        teamD.setShortName("CTD" + testId.substring(testId.length() - 3));
+        teamD.setShortName(
+                "CTD" + testId.substring(testId.length() - 3));
         teamD.setCity("Test City");
         teamD = teamRepository.save(teamD);
 
@@ -5199,7 +5522,8 @@ class CricklocalBackendApplicationTests {
                 "Conflict Player",
                 "Shared",
                 "Conflict Player " + testId,
-                PlayerRole.BATTER);
+                PlayerRole.BATTER
+        );
 
         TeamPlayer membershipA = new TeamPlayer();
         membershipA.setTeam(teamA);
@@ -5231,11 +5555,13 @@ class CricklocalBackendApplicationTests {
         matchLineupRepository.save(match1CaptainLineup);
 
         for (int i = 2; i <= 11; i++) {
+
                 Player player = createPlayer(
                         "Match1 Player " + i,
                         "Test",
                         "Match1 Player " + i + " " + testId,
-                        PlayerRole.BATTER);
+                        PlayerRole.BATTER
+                );
 
                 TeamPlayer membership = new TeamPlayer();
                 membership.setTeam(teamA);
@@ -5247,9 +5573,10 @@ class CricklocalBackendApplicationTests {
                 createLineup(match1, teamA, player, i);
 
                 if (i == 2) {
-                MatchLineup wicketKeeperLineup = matchLineupRepository
-                        .findByMatchAndPlayer(match1, player)
-                        .orElseThrow();
+                MatchLineup wicketKeeperLineup =
+                        matchLineupRepository
+                                .findByMatchAndPlayer(match1, player)
+                                .orElseThrow();
 
                 wicketKeeperLineup.setWicketKeeper(true);
                 matchLineupRepository.save(wicketKeeperLineup);
@@ -5257,16 +5584,26 @@ class CricklocalBackendApplicationTests {
         }
 
         // Match 1 finalization must succeed.
+        Authentication authentication =
+                createAdminAuthentication();
+
         mockMvc.perform(
                 post("/api/matches/" + match1.getId()
-                        + "/lineup/team/" + teamA.getId() + "/finalize"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.playerCount").value(11));
+                        + "/lineup/team/" + teamA.getId()
+                        + "/finalize")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.playerCount").value(11));
 
         assertTrue(
                 playingXIRepository
                         .findByMatchAndTeam(match1, teamA)
-                        .isPresent());
+                        .isPresent()
+        );
 
         // ---------------------------------------------------------
         // Match 2 - create Playing XI
@@ -5284,11 +5621,13 @@ class CricklocalBackendApplicationTests {
         matchLineupRepository.save(match2CaptainLineup);
 
         for (int i = 2; i <= 11; i++) {
+
                 Player player = createPlayer(
                         "Match2 Player " + i,
                         "Test",
                         "Match2 Player " + i + " " + testId,
-                        PlayerRole.BATTER);
+                        PlayerRole.BATTER
+                );
 
                 TeamPlayer membership = new TeamPlayer();
                 membership.setTeam(teamC);
@@ -5300,9 +5639,10 @@ class CricklocalBackendApplicationTests {
                 createLineup(match2, teamC, player, i);
 
                 if (i == 2) {
-                MatchLineup wicketKeeperLineup = matchLineupRepository
-                        .findByMatchAndPlayer(match2, player)
-                        .orElseThrow();
+                MatchLineup wicketKeeperLineup =
+                        matchLineupRepository
+                                .findByMatchAndPlayer(match2, player)
+                                .orElseThrow();
 
                 wicketKeeperLineup.setWicketKeeper(true);
                 matchLineupRepository.save(wicketKeeperLineup);
@@ -5313,37 +5653,52 @@ class CricklocalBackendApplicationTests {
         // already has a finalized Playing XI at the same scheduled time.
         mockMvc.perform(
                 post("/api/matches/" + match2.getId()
-                        + "/lineup/team/" + teamC.getId() + "/finalize"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message")
-                        .value(org.hamcrest.Matchers.containsString(
-                                "Player has a finalized Playing XI conflict at the same scheduled time")));
+                        + "/lineup/team/" + teamC.getId()
+                        + "/finalize")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message")
+                .value(
+                        org.hamcrest.Matchers.containsString(
+                                "Player has a finalized Playing XI conflict at the same scheduled time"
+                        )
+                ));
 
         assertFalse(
                 playingXIRepository
                         .findByMatchAndTeam(match2, teamC)
-                        .isPresent());
+                        .isPresent()
+        );
         }
 
-    @Test
-    void finalizePlayingXIShouldRejectTeamThatDoesNotBelongToMatch() throws Exception {
+        @Test
+        void finalizePlayingXIShouldRejectTeamThatDoesNotBelongToMatch()
+                throws Exception {
+
         String testId = String.valueOf(System.nanoTime());
 
         Team teamA = new Team();
         teamA.setName("Ownership Team A " + testId);
-        teamA.setShortName("OTA" + testId.substring(testId.length() - 3));
+        teamA.setShortName(
+                "OTA" + testId.substring(testId.length() - 3));
         teamA.setCity("Test City");
         teamA = teamRepository.save(teamA);
 
         Team teamB = new Team();
         teamB.setName("Ownership Team B " + testId);
-        teamB.setShortName("OTB" + testId.substring(testId.length() - 3));
+        teamB.setShortName(
+                "OTB" + testId.substring(testId.length() - 3));
         teamB.setCity("Test City");
         teamB = teamRepository.save(teamB);
 
         Team unrelatedTeam = new Team();
         unrelatedTeam.setName("Unrelated Team " + testId);
-        unrelatedTeam.setShortName("OUT" + testId.substring(testId.length() - 3));
+        unrelatedTeam.setShortName(
+                "OUT" + testId.substring(testId.length() - 3));
         unrelatedTeam.setCity("Test City");
         unrelatedTeam = teamRepository.save(unrelatedTeam);
 
@@ -5353,7 +5708,8 @@ class CricklocalBackendApplicationTests {
         match.setFormat(MatchFormat.T20);
         match.setTotalOvers(20);
         match.setMaxPlayersPerTeam(11);
-        match.setScheduledAt(Instant.parse("2027-01-07T10:00:00Z"));
+        match.setScheduledAt(
+                Instant.parse("2027-01-07T10:00:00Z"));
         match.setStatus(MatchStatus.SCHEDULED);
         match = matchRepository.save(match);
 
@@ -5369,31 +5725,46 @@ class CricklocalBackendApplicationTests {
         matchTeamB.setSide(MatchTeamSide.TEAM_B);
         matchTeamRepository.save(matchTeamB);
 
+        Authentication authentication =
+                createAdminAuthentication();
+
         mockMvc.perform(
                 post("/api/matches/" + match.getId()
-                        + "/lineup/team/" + unrelatedTeam.getId() + "/finalize"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message")
-                        .value("Team does not belong to this match"));
+                        + "/lineup/team/" + unrelatedTeam.getId()
+                        + "/finalize")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message")
+                .value("Team does not belong to this match"));
 
-        assertFalse(playingXIRepository
-                .findByMatchAndTeam(match, unrelatedTeam)
-                .isPresent());
-    }
+        assertFalse(
+                playingXIRepository
+                        .findByMatchAndTeam(match, unrelatedTeam)
+                        .isPresent()
+        );
+        }
 
-    @Test
-    void finalizePlayingXIShouldRejectWhenWicketKeeperIsNotInPlayingXI() throws Exception {
+        @Test
+        void finalizePlayingXIShouldRejectWhenWicketKeeperIsNotInPlayingXI()
+                throws Exception {
+
         String testId = String.valueOf(System.nanoTime());
 
         Team teamA = new Team();
         teamA.setName("WK Required Team A " + testId);
-        teamA.setShortName("WKA" + testId.substring(testId.length() - 3));
+        teamA.setShortName(
+                "WKA" + testId.substring(testId.length() - 3));
         teamA.setCity("Test City");
         teamA = teamRepository.save(teamA);
 
         Team teamB = new Team();
         teamB.setName("WK Required Team B " + testId);
-        teamB.setShortName("WKB" + testId.substring(testId.length() - 3));
+        teamB.setShortName(
+                "WKB" + testId.substring(testId.length() - 3));
         teamB.setCity("Test City");
         teamB = teamRepository.save(teamB);
 
@@ -5403,7 +5774,8 @@ class CricklocalBackendApplicationTests {
         match.setFormat(MatchFormat.T20);
         match.setTotalOvers(20);
         match.setMaxPlayersPerTeam(11);
-        match.setScheduledAt(Instant.parse("2027-01-07T10:00:00Z"));
+        match.setScheduledAt(
+                Instant.parse("2027-01-07T10:00:00Z"));
         match.setStatus(MatchStatus.SCHEDULED);
         match = matchRepository.save(match);
 
@@ -5423,11 +5795,13 @@ class CricklocalBackendApplicationTests {
 
         // Create exactly 11 active team members and lineup entries.
         for (int i = 1; i <= 11; i++) {
+
                 Player player = createPlayer(
                         "WK Required Player " + i,
                         "Test",
                         "WK Required Player " + i + " " + testId,
-                        PlayerRole.BATTER);
+                        PlayerRole.BATTER
+                );
 
                 if (i == 1) {
                 captain = player;
@@ -5444,25 +5818,38 @@ class CricklocalBackendApplicationTests {
         }
 
         // Captain is in the Playing XI.
-        MatchLineup captainLineup = matchLineupRepository
-                .findByMatchAndPlayer(match, captain)
-                .orElseThrow();
+        MatchLineup captainLineup =
+                matchLineupRepository
+                        .findByMatchAndPlayer(match, captain)
+                        .orElseThrow();
 
         captainLineup.setCaptain(true);
         matchLineupRepository.save(captainLineup);
 
         // Intentionally do NOT select a Wicket Keeper.
+        Authentication authentication =
+                createAdminAuthentication();
 
         mockMvc.perform(
                 post("/api/matches/" + match.getId()
-                        + "/lineup/team/" + teamA.getId() + "/finalize"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message")
-                        .value("Wicket Keeper must be part of the Playing XI"));
+                        + "/lineup/team/" + teamA.getId()
+                        + "/finalize")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message")
+                .value("Wicket Keeper must be part of the Playing XI"));
 
         assertFalse(
-                playingXIRepository.existsByMatchAndTeam(match, teamA));
-    }
+                playingXIRepository.existsByMatchAndTeam(
+                        match,
+                        teamA
+                )
+        );
+        }
 
     @Test
     void addPlayerToMatchShouldUpdateExistingLineupInsteadOfCreatingDuplicate()
@@ -5507,20 +5894,26 @@ class CricklocalBackendApplicationTests {
         teamPlayerRepository.save(membership);
 
         // First selection.
+        Authentication authentication = createAdminAuthentication();
+
         mockMvc.perform(
                 post("/api/matches/" + match.getId() + "/lineup")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
                                 "teamId": %d,
                                 "playerId": %d,
                                 "playing": true,
-                                "captain": false,
+                                "captain": true,
                                 "wicketKeeper": false
                                 }
                                 """.formatted(
-                                team.getId(),
-                                player.getId())))
+                                        team.getId(),
+                                        player.getId())))
                 .andExpect(status().isCreated());
 
         assertEquals(
@@ -5533,6 +5926,10 @@ class CricklocalBackendApplicationTests {
         // Select the same player again.
         mockMvc.perform(
                 post("/api/matches/" + match.getId() + "/lineup")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -5543,8 +5940,8 @@ class CricklocalBackendApplicationTests {
                                 "wicketKeeper": false
                                 }
                                 """.formatted(
-                                team.getId(),
-                                player.getId())))
+                                        team.getId(),
+                                        player.getId())))
                 .andExpect(status().isCreated());
 
         // There must still be exactly one lineup row.
@@ -5621,9 +6018,14 @@ class CricklocalBackendApplicationTests {
         teamPlayerRepository.save(secondMembership);
 
         // Player 1 becomes Captain.
+        Authentication authentication = createAdminAuthentication();
         mockMvc.perform(
                 post("/api/matches/" + match.getId() + "/lineup")
-                        .contentType(MediaType.APPLICATION_JSON)
+                .with(
+                        SecurityMockMvcRequestPostProcessors
+                                .authentication(authentication)
+                )        
+                .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
                                 "teamId": %d,
@@ -5647,6 +6049,10 @@ class CricklocalBackendApplicationTests {
         // Player 2 becomes the new Captain.
         mockMvc.perform(
                 post("/api/matches/" + match.getId() + "/lineup")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -5734,9 +6140,14 @@ class CricklocalBackendApplicationTests {
         teamPlayerRepository.save(secondMembership);
 
         // Player 1 becomes Wicket Keeper.
+        Authentication authentication = createAdminAuthentication();
         mockMvc.perform(
                 post("/api/matches/" + match.getId() + "/lineup")
-                        .contentType(MediaType.APPLICATION_JSON)
+                .with(
+                        SecurityMockMvcRequestPostProcessors
+                                .authentication(authentication)
+                )        
+                .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
                                 "teamId": %d,
@@ -5760,6 +6171,10 @@ class CricklocalBackendApplicationTests {
         // Player 2 becomes the new Wicket Keeper.
         mockMvc.perform(
                 post("/api/matches/" + match.getId() + "/lineup")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -5834,9 +6249,14 @@ class CricklocalBackendApplicationTests {
         teamPlayerRepository.save(membership);
 
         // Select player as Captain.
+        Authentication authentication = createAdminAuthentication();
         mockMvc.perform(
                 post("/api/matches/" + match.getId() + "/lineup")
-                        .contentType(MediaType.APPLICATION_JSON)
+                .with(
+                        SecurityMockMvcRequestPostProcessors
+                                .authentication(authentication)
+                )        
+                .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
                                 "teamId": %d,
@@ -5860,6 +6280,10 @@ class CricklocalBackendApplicationTests {
         // Deselect the player.
         mockMvc.perform(
                 post("/api/matches/" + match.getId() + "/lineup")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -5928,8 +6352,13 @@ class CricklocalBackendApplicationTests {
         teamPlayerRepository.save(membership);
 
         // Select player as Wicket Keeper.
+        Authentication authentication = createAdminAuthentication();
         mockMvc.perform(
                 post("/api/matches/" + match.getId() + "/lineup")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -5954,6 +6383,10 @@ class CricklocalBackendApplicationTests {
         // Deselect the player.
         mockMvc.perform(
                 post("/api/matches/" + match.getId() + "/lineup")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
@@ -5979,21 +6412,23 @@ class CricklocalBackendApplicationTests {
         assertFalse(updatedLineup.getWicketKeeper());
     }
 
-    @Test
-    void addPlayerToMatchShouldRejectChangesAfterPlayingXIIsFinalized()
+        @Test
+        void addPlayerToMatchShouldRejectChangesAfterPlayingXIIsFinalized()
                 throws Exception {
 
         String testId = String.valueOf(System.nanoTime());
 
         Team teamA = new Team();
         teamA.setName("Locked XI Team A " + testId);
-        teamA.setShortName("LXA" + testId.substring(testId.length() - 3));
+        teamA.setShortName(
+                "LXA" + testId.substring(testId.length() - 3));
         teamA.setCity("Test City");
         teamA = teamRepository.save(teamA);
 
         Team teamB = new Team();
         teamB.setName("Locked XI Team B " + testId);
-        teamB.setShortName("LXB" + testId.substring(testId.length() - 3));
+        teamB.setShortName(
+                "LXB" + testId.substring(testId.length() - 3));
         teamB.setCity("Test City");
         teamB = teamRepository.save(teamB);
 
@@ -6030,7 +6465,8 @@ class CricklocalBackendApplicationTests {
                         "Locked XI Player " + i,
                         "Test",
                         "Locked XI Player " + i + " " + testId,
-                        PlayerRole.BATTER);
+                        PlayerRole.BATTER
+                );
 
                 if (i == 1) {
                 captain = player;
@@ -6051,173 +6487,81 @@ class CricklocalBackendApplicationTests {
         }
 
         // Set Captain.
-        MatchLineup captainLineup = matchLineupRepository
-                .findByMatchAndPlayer(match, captain)
-                .orElseThrow();
+        MatchLineup captainLineup =
+                matchLineupRepository
+                        .findByMatchAndPlayer(match, captain)
+                        .orElseThrow();
 
         captainLineup.setCaptain(true);
         matchLineupRepository.save(captainLineup);
 
         // Set Wicket Keeper.
-        MatchLineup wicketKeeperLineup = matchLineupRepository
-                .findByMatchAndPlayer(match, wicketKeeper)
-                .orElseThrow();
-
-        wicketKeeperLineup.setWicketKeeper(true);
-        matchLineupRepository.save(wicketKeeperLineup);
-
-        // Finalize the Playing XI.
-        mockMvc.perform(
-                post("/api/matches/" + match.getId()
-                        + "/lineup/team/" + teamA.getId() + "/finalize"))
-                .andExpect(status().isOk());
-
-        assertTrue(
-                playingXIRepository.existsByMatchAndTeam(
-                        match,
-                        teamA));
-
-        // Try to deselect the Captain after lock.
-        mockMvc.perform(
-                post("/api/matches/" + match.getId() + "/lineup")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("""
-                                {
-                                "teamId": %d,
-                                "playerId": %d,
-                                "playing": false,
-                                "captain": false,
-                                "wicketKeeper": false
-                                }
-                                """.formatted(
-                                teamA.getId(),
-                                captain.getId())))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message")
-                        .value(
-                                "Playing XI has already been finalized for this team"));
-
-        // Verify the lineup remains unchanged.
-        MatchLineup lockedCaptainLineup = matchLineupRepository
-                .findByMatchAndPlayer(match, captain)
-                .orElseThrow();
-
-        assertTrue(lockedCaptainLineup.getPlaying());
-        assertTrue(lockedCaptainLineup.getCaptain());
-    }
-
-    @Test
-    void getFinalizedPlayingXIShouldReturnPersistedPlayingXI() throws Exception {
-
-        String testId = String.valueOf(System.nanoTime());
-
-        Team teamA = new Team();
-        teamA.setName("Persisted XI Team A " + testId);
-        teamA.setShortName("PXA" + testId.substring(testId.length() - 3));
-        teamA.setCity("Test City");
-        teamA = teamRepository.save(teamA);
-
-        Team teamB = new Team();
-        teamB.setName("Persisted XI Team B " + testId);
-        teamB.setShortName("PXB" + testId.substring(testId.length() - 3));
-        teamB.setCity("Test City");
-        teamB = teamRepository.save(teamB);
-
-        Match match = new Match();
-        match.setName("Persisted XI Match " + testId);
-        match.setMatchNumber(1);
-        match.setFormat(MatchFormat.T20);
-        match.setTotalOvers(20);
-        match.setMaxPlayersPerTeam(11);
-        match.setScheduledAt(
-                Instant.parse("2027-02-07T10:00:00Z"));
-        match.setStatus(MatchStatus.SCHEDULED);
-        match = matchRepository.save(match);
-
-        MatchTeam matchTeamA = new MatchTeam();
-        matchTeamA.setMatch(match);
-        matchTeamA.setTeam(teamA);
-        matchTeamA.setSide(MatchTeamSide.TEAM_A);
-        matchTeamRepository.save(matchTeamA);
-
-        MatchTeam matchTeamB = new MatchTeam();
-        matchTeamB.setMatch(match);
-        matchTeamB.setTeam(teamB);
-        matchTeamB.setSide(MatchTeamSide.TEAM_B);
-        matchTeamRepository.save(matchTeamB);
-
-        Player captain = null;
-
-        for (int i = 1; i <= 11; i++) {
-
-                Player player = createPlayer(
-                        "Persisted XI Player " + i,
-                        "Test",
-                        "Persisted XI Player " + i + " " + testId,
-                        PlayerRole.BATTER);
-
-                if (i == 1) {
-                captain = player;
-                }
-
-                TeamPlayer membership = new TeamPlayer();
-                membership.setTeam(teamA);
-                membership.setPlayer(player);
-                membership.setJerseyNumber(i);
-                membership.setActive(true);
-                teamPlayerRepository.save(membership);
-
-                createLineup(match, teamA, player, i);
-        }
-
-        MatchLineup captainLineup = matchLineupRepository
-                .findByMatchAndPlayer(match, captain)
-                .orElseThrow();
-
-        captainLineup.setCaptain(true);
-        matchLineupRepository.save(captainLineup);
-
         MatchLineup wicketKeeperLineup =
                 matchLineupRepository
-                        .findByMatchAndPlayer(
-                                match,
-                                matchLineupRepository
-                                        .findByMatchAndTeam(match, teamA)
-                                        .get(1)
-                                        .getPlayer())
+                        .findByMatchAndPlayer(match, wicketKeeper)
                         .orElseThrow();
 
         wicketKeeperLineup.setWicketKeeper(true);
         matchLineupRepository.save(wicketKeeperLineup);
 
-        // Finalize the XI first.
+        Authentication authentication =
+                createAdminAuthentication();
+
+        // Finalize the Playing XI.
         mockMvc.perform(
                 post("/api/matches/" + match.getId()
-                        + "/lineup/team/" + teamA.getId() + "/finalize"))
-                .andExpect(status().isOk());
-
-        // Read the persisted finalized XI.
-        mockMvc.perform(
-                get("/api/matches/" + match.getId()
                         + "/lineup/team/" + teamA.getId()
-                        + "/finalized"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.playingXIId").exists())
-                .andExpect(jsonPath("$.matchId")
-                        .value(match.getId()))
-                .andExpect(jsonPath("$.teamId")
-                        .value(teamA.getId()))
-                .andExpect(jsonPath("$.teamName")
-                        .value(teamA.getName()))
-                .andExpect(jsonPath("$.teamShortName")
-                        .value(teamA.getShortName()))
-                .andExpect(jsonPath("$.finalizedAt").exists())
-                .andExpect(jsonPath("$.playerCount").value(11))
-                .andExpect(jsonPath("$.captainPlayerId")
-                        .value(captain.getId()))
-                .andExpect(jsonPath("$.captainName")
-                        .value(captain.getDisplayName()));
-    }
+                        + "/finalize")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isOk());
+
+        assertTrue(
+                playingXIRepository.existsByMatchAndTeam(
+                        match,
+                        teamA
+                )
+        );
+
+        // Try to deselect the Captain after lock.
+        mockMvc.perform(
+                post("/api/matches/" + match.getId() + "/lineup")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                        "teamId": %d,
+                                        "playerId": %d,
+                                        "playing": false,
+                                        "captain": false,
+                                        "wicketKeeper": false
+                                }
+                                """.formatted(
+                                teamA.getId(),
+                                captain.getId()
+                        ))
+        )
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.message")
+                .value(
+                        "Playing XI has already been finalized for this team"
+                ));
+
+        // Verify the lineup remains unchanged.
+        MatchLineup lockedCaptainLineup =
+                matchLineupRepository
+                        .findByMatchAndPlayer(match, captain)
+                        .orElseThrow();
+
+        assertTrue(lockedCaptainLineup.getPlaying());
+        assertTrue(lockedCaptainLineup.getCaptain());
+        }
 
     @Test
     void adminAccessShouldBeFalseWhenNoEntitlementExists() {
@@ -10499,8 +10843,7 @@ class CricklocalBackendApplicationTests {
         return userRepository.save(user);
     }
 
-    private Authentication createAdminAuthentication() {
-
+    private User createAdminTestUser() {
         User admin = createPlayerRegistrationTestUser();
 
         adminAccessService.activateAdminAccess(
@@ -10508,6 +10851,24 @@ class CricklocalBackendApplicationTests {
                 Instant.now(),
                 null
         );
+
+        return admin;
+    }
+
+    private Authentication createAdminAuthentication() {
+
+        User admin = createPlayerRegistrationTestUser();
+
+        admin.setRole(UserRole.ADMIN);
+        admin.setActive(true);
+
+        adminAccessService.activateAdminAccess(
+                admin,
+                Instant.now(),
+                null
+        );
+
+        admin = userRepository.saveAndFlush(admin);
 
         String googleSubject =
                 "google-admin-test-" + uniqueTestId();
@@ -10540,10 +10901,10 @@ class CricklocalBackendApplicationTests {
                         "sub"
                 );
 
-        return new UsernamePasswordAuthenticationToken(
+        return new OAuth2AuthenticationToken(
                 oauth2User,
-                null,
-                oauth2User.getAuthorities()
+                oauth2User.getAuthorities(),
+                "google"
         );
     }
 
@@ -10619,5 +10980,1182 @@ class CricklocalBackendApplicationTests {
                 outputStream.toByteArray()
         );
   }
+  private Authentication createSuperAdminAuthentication() {
 
+        User superAdmin = createPlayerRegistrationTestUser();
+
+        superAdmin.setRole(UserRole.SUPER_ADMIN);
+        superAdmin.setActive(true);
+
+        superAdmin.setAccountStatus(UserAccountStatus.ACTIVE);
+
+        superAdmin = userRepository.saveAndFlush(superAdmin);
+
+        String googleSubject =
+                "google-super-admin-test-" + uniqueTestId();
+
+        UserAuthentication userAuthentication =
+                new UserAuthentication();
+
+        userAuthentication.setUser(superAdmin);
+        userAuthentication.setProvider(
+                AuthenticationProvider.GOOGLE
+        );
+        userAuthentication.setProviderUserId(
+                googleSubject
+        );
+
+        userAuthenticationRepository.saveAndFlush(
+                userAuthentication
+        );
+
+        OAuth2User oauth2User =
+                new DefaultOAuth2User(
+                        java.util.List.of(
+                                new SimpleGrantedAuthority("ROLE_USER")
+                        ),
+                        Map.of(
+                                "sub", googleSubject,
+                                "email", superAdmin.getEmail(),
+                                "name", superAdmin.getDisplayName()
+                        ),
+                        "sub"
+                );
+
+        return new OAuth2AuthenticationToken(
+                oauth2User,
+                oauth2User.getAuthorities(),
+                "google"
+        );
+  }
+  @Test
+  void superAdminCanViewPermissionModules() throws Exception {
+
+        Authentication authentication =
+                createSuperAdminAuthentication();
+
+        mockMvc.perform(
+                get("/api/admin/permissions/modules")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$").isArray())
+        .andExpect(jsonPath("$[0].moduleKey").exists())
+        .andExpect(jsonPath("$[0].moduleName").exists())
+        .andExpect(jsonPath("$[0].actions").isArray());
+  }
+  @Test
+  void superAdminCanViewUserPermissions() throws Exception {
+
+        Authentication authentication =
+                createSuperAdminAuthentication();
+
+        User player = createPlayerRegistrationTestUser();
+
+        player.setRole(UserRole.PLAYER);
+        player.setActive(true);
+        player.setAccountStatus(UserAccountStatus.ACTIVE);
+
+        player = userRepository.saveAndFlush(player);
+
+        mockMvc.perform(
+                get("/api/admin/permissions/users/{userId}",
+                        player.getId())
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.userId")
+                .value(player.getId()))
+        .andExpect(jsonPath("$.email")
+                .value(player.getEmail()))
+        .andExpect(jsonPath("$.role")
+                .value("PLAYER"))
+        .andExpect(jsonPath("$.permissions")
+                .isArray())
+        .andExpect(jsonPath("$.permissions.length()")
+                .value(80));
+   }
+   @Test
+   void superAdminCanEnableUserPermission() throws Exception {
+
+        Authentication authentication =
+                createSuperAdminAuthentication();
+
+        User player = createPlayerRegistrationTestUser();
+
+        player.setRole(UserRole.PLAYER);
+        player.setActive(true);
+        player.setAccountStatus(UserAccountStatus.ACTIVE);
+
+        player = userRepository.saveAndFlush(player);
+
+        /*
+        * PLAYER default:
+        *
+        * TEAMS.CREATE = false
+        *
+        * Super Admin explicitly enables it.
+        */
+        String requestBody = """
+                {
+                        "moduleKey": "TEAMS",
+                        "action": "CREATE",
+                        "allowed": true
+                }
+                """;
+
+        mockMvc.perform(
+                put(
+                        "/api/admin/permissions/users/{userId}",
+                        player.getId()
+                )
+                .with(
+                        SecurityMockMvcRequestPostProcessors
+                                .authentication(authentication)
+                )
+                .contentType(
+                        org.springframework.http.MediaType.APPLICATION_JSON
+                )
+                .content(requestBody)
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.userId")
+                .value(player.getId()))
+        .andExpect(jsonPath("$.role")
+                .value("PLAYER"))
+        .andExpect(jsonPath("$.permissions")
+                .isArray())
+        .andExpect(
+                jsonPath(
+                        "$.permissions[?(@.moduleKey=='TEAMS')].action"
+                )
+                .value(
+                        org.hamcrest.Matchers.hasItem("CREATE")
+                )
+        )
+        .andExpect(
+                jsonPath(
+                        "$.permissions[?(@.moduleKey=='TEAMS')].override"
+                )
+                .value(
+                        org.hamcrest.Matchers.hasItem(true)
+                )
+        )
+        .andExpect(
+                jsonPath(
+                        "$.permissions[?(@.moduleKey=='TEAMS')].effective"
+                )
+                .value(
+                        org.hamcrest.Matchers.hasItem(true)
+                )
+        );
+                PermissionModule teamsModule =
+                permissionModuleRepository
+                        .findByModuleKey("TEAMS")
+                        .orElseThrow();
+
+                UserPermissionOverride override =
+                        userPermissionOverrideRepository
+                                .findByUser_IdAndModule_ModuleKeyAndAction(
+                                        player.getId(),
+                                        "TEAMS",
+                                        PermissionAction.CREATE
+                                )
+                                .orElseThrow();
+
+                org.junit.jupiter.api.Assertions.assertEquals(
+                        Boolean.TRUE,
+                        override.getAllowed()
+                );
+   }
+   @Test
+   void superAdminCanDisableUserPermission() throws Exception {
+
+        Authentication authentication =
+                createSuperAdminAuthentication();
+
+        User player = createPlayerRegistrationTestUser();
+
+        player.setRole(UserRole.PLAYER);
+        player.setActive(true);
+        player.setAccountStatus(UserAccountStatus.ACTIVE);
+
+        player = userRepository.saveAndFlush(player);
+
+        /*
+        * First explicitly enable TEAMS.CREATE.
+        */
+        String enableRequest = """
+                {
+                        "moduleKey": "TEAMS",
+                        "action": "CREATE",
+                        "allowed": true
+                }
+                """;
+
+        mockMvc.perform(
+                put(
+                        "/api/admin/permissions/users/{userId}",
+                        player.getId()
+                )
+                .with(
+                        SecurityMockMvcRequestPostProcessors
+                                .authentication(authentication)
+                )
+                .contentType(
+                        org.springframework.http.MediaType.APPLICATION_JSON
+                )
+                .content(enableRequest)
+        )
+        .andExpect(status().isOk());
+
+        /*
+        * Now explicitly disable TEAMS.CREATE.
+        */
+        String disableRequest = """
+                {
+                        "moduleKey": "TEAMS",
+                        "action": "CREATE",
+                        "allowed": false
+                }
+                """;
+
+        mockMvc.perform(
+                put(
+                        "/api/admin/permissions/users/{userId}",
+                        player.getId()
+                )
+                .with(
+                        SecurityMockMvcRequestPostProcessors
+                                .authentication(authentication)
+                )
+                .contentType(
+                        org.springframework.http.MediaType.APPLICATION_JSON
+                )
+                .content(disableRequest)
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.userId")
+                .value(player.getId()))
+        .andExpect(jsonPath("$.role")
+                .value("PLAYER"))
+        .andExpect(jsonPath("$.permissions")
+                .isArray())
+        .andExpect(
+                jsonPath(
+                        "$.permissions[?(@.moduleKey=='TEAMS')].action"
+                )
+                .value(
+                        org.hamcrest.Matchers.hasItem("CREATE")
+                )
+        )
+        .andExpect(
+                jsonPath(
+                        "$.permissions[?(@.moduleKey=='TEAMS')].override"
+                )
+                .value(
+                        org.hamcrest.Matchers.hasItem(false)
+                )
+        )
+        .andExpect(
+                jsonPath(
+                        "$.permissions[?(@.moduleKey=='TEAMS')].effective"
+                )
+                .value(
+                        org.hamcrest.Matchers.hasItem(false)
+                )
+        );
+   }
+   @Test
+   void superAdminCanResetUserPermission() throws Exception {
+
+        Authentication authentication =
+                createSuperAdminAuthentication();
+
+        User player = createPlayerRegistrationTestUser();
+
+        player.setRole(UserRole.PLAYER);
+        player.setActive(true);
+        player.setAccountStatus(UserAccountStatus.ACTIVE);
+
+        player = userRepository.saveAndFlush(player);
+
+        /*
+        * Explicitly enable TEAMS.CREATE.
+        */
+        String enableRequest = """
+                {
+                        "moduleKey": "TEAMS",
+                        "action": "CREATE",
+                        "allowed": true
+                }
+                """;
+
+        mockMvc.perform(
+                put(
+                        "/api/admin/permissions/users/{userId}",
+                        player.getId()
+                )
+                .with(
+                        SecurityMockMvcRequestPostProcessors
+                                .authentication(authentication)
+                )
+                .contentType(
+                        org.springframework.http.MediaType.APPLICATION_JSON
+                )
+                .content(enableRequest)
+        )
+        .andExpect(status().isOk());
+
+        /*
+        * Reset TEAMS.CREATE.
+        *
+        * allowed = null means:
+        * remove the user override and use
+        * the role default again.
+        */
+        String resetRequest = """
+                {
+                        "moduleKey": "TEAMS",
+                        "action": "CREATE",
+                        "allowed": null
+                }
+                """;
+
+        mockMvc.perform(
+                put(
+                        "/api/admin/permissions/users/{userId}",
+                        player.getId()
+                )
+                .with(
+                        SecurityMockMvcRequestPostProcessors
+                                .authentication(authentication)
+                )
+                .contentType(
+                        org.springframework.http.MediaType.APPLICATION_JSON
+                )
+                .content(resetRequest)
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.userId")
+                .value(player.getId()))
+        .andExpect(jsonPath("$.role")
+                .value("PLAYER"))
+        .andExpect(jsonPath("$.permissions")
+                .isArray())
+        .andExpect(
+                jsonPath(
+                        "$.permissions[?(@.moduleKey=='TEAMS')].action"
+                )
+                .value(
+                        org.hamcrest.Matchers.hasItem("CREATE")
+                )
+        )
+        .andExpect(
+                jsonPath(
+                        "$.permissions[?(@.moduleKey=='TEAMS')].override"
+                )
+                .value(
+                        org.hamcrest.Matchers.hasItem(nullValue())
+                )
+        )
+        .andExpect(
+                jsonPath(
+                        "$.permissions[?(@.moduleKey=='TEAMS')].effective"
+                )
+                .value(
+                        org.hamcrest.Matchers.hasItem(false)
+                )
+        );
+   }
+   @Test
+   void superAdminCanResetAllUserPermissions() throws Exception {
+
+        Authentication authentication =
+                createSuperAdminAuthentication();
+
+        User player = createPlayerRegistrationTestUser();
+
+        player.setRole(UserRole.PLAYER);
+        player.setActive(true);
+        player.setAccountStatus(UserAccountStatus.ACTIVE);
+
+        player = userRepository.saveAndFlush(player);
+
+        /*
+        * Create multiple explicit overrides.
+        */
+        String enableTeamsCreate = """
+                {
+                        "moduleKey": "TEAMS",
+                        "action": "CREATE",
+                        "allowed": true
+                }
+                """;
+
+        mockMvc.perform(
+                put(
+                        "/api/admin/permissions/users/{userId}",
+                        player.getId()
+                )
+                .with(
+                        SecurityMockMvcRequestPostProcessors
+                                .authentication(authentication)
+                )
+                .contentType(
+                        org.springframework.http.MediaType.APPLICATION_JSON
+                )
+                .content(enableTeamsCreate)
+        )
+        .andExpect(status().isOk());
+
+        String enableSeriesCreate = """
+                {
+                        "moduleKey": "SERIES",
+                        "action": "CREATE",
+                        "allowed": true
+                }
+                """;
+
+        mockMvc.perform(
+                put(
+                        "/api/admin/permissions/users/{userId}",
+                        player.getId()
+                )
+                .with(
+                        SecurityMockMvcRequestPostProcessors
+                                .authentication(authentication)
+                )
+                .contentType(
+                        org.springframework.http.MediaType.APPLICATION_JSON
+                )
+                .content(enableSeriesCreate)
+        )
+        .andExpect(status().isOk());
+
+        /*
+        * Confirm that overrides exist before reset.
+        */
+        org.junit.jupiter.api.Assertions.assertEquals(
+                2,
+                userPermissionOverrideRepository
+                        .findByUser_Id(player.getId())
+                        .size()
+        );
+
+        /*
+        * Reset ALL overrides.
+        */
+        mockMvc.perform(
+                delete(
+                        "/api/admin/permissions/users/{userId}/reset",
+                        player.getId()
+                )
+                .with(
+                        SecurityMockMvcRequestPostProcessors
+                                .authentication(authentication)
+                )
+        )
+        .andExpect(status().isNoContent());
+
+        /*
+        * All user-specific overrides must now be removed.
+        */
+        org.junit.jupiter.api.Assertions.assertEquals(
+                0,
+                userPermissionOverrideRepository
+                        .findByUser_Id(player.getId())
+                        .size()
+        );
+
+        /*
+        * Verify the effective permission is back to
+        * the PLAYER role default.
+        */
+        mockMvc.perform(
+                get(
+                        "/api/admin/permissions/users/{userId}",
+                        player.getId()
+                )
+                .with(
+                        SecurityMockMvcRequestPostProcessors
+                                .authentication(authentication)
+                )
+        )
+        .andExpect(status().isOk())
+        .andExpect(
+                jsonPath(
+                        "$.permissions[?(@.moduleKey=='TEAMS')].effective"
+                )
+                .value(
+                        org.hamcrest.Matchers.hasItem(false)
+                )
+        )
+        .andExpect(
+                jsonPath(
+                        "$.permissions[?(@.moduleKey=='SERIES')].effective"
+                )
+                .value(
+                        org.hamcrest.Matchers.hasItem(false)
+                )
+        );
+   }
+   @Test
+   void adminCannotAccessSuperAdminPermissionModules() throws Exception {
+
+        Authentication authentication =
+                createAdminAuthentication();
+
+        MvcResult result =
+                mockMvc.perform(
+                        get("/api/admin/permissions/modules")
+                                .with(
+                                        SecurityMockMvcRequestPostProcessors
+                                                .authentication(authentication)
+                                )
+                )
+                .andDo(MockMvcResultHandlers.print())
+                .andReturn();
+
+        System.out.println(
+                "ADMIN PERMISSION TEST STATUS = "
+                        + result.getResponse().getStatus()
+        );
+
+        System.out.println(
+                "ADMIN PERMISSION TEST ERROR = "
+                        + result.getResponse().getErrorMessage()
+        );
+
+        if (result.getResolvedException() != null) {
+
+                result.getResolvedException().printStackTrace();
+
+                System.out.println(
+                        "RESOLVED EXCEPTION TYPE = "
+                                + result.getResolvedException()
+                                        .getClass()
+                                        .getName()
+                );
+
+                System.out.println(
+                        "RESOLVED EXCEPTION MESSAGE = "
+                                + result.getResolvedException()
+                                        .getMessage()
+                );
+        }
+
+        Assertions.assertEquals(
+                403,
+                result.getResponse().getStatus()
+        );
+   }
+    @Test
+    void playerCannotAccessSuperAdminPermissionModules() throws Exception {
+
+        User player = createPlayerRegistrationTestUser();
+
+        player.setRole(UserRole.PLAYER);
+        player.setActive(true);
+        player.setAccountStatus(UserAccountStatus.ACTIVE);
+
+        player = userRepository.saveAndFlush(player);
+
+        String googleSubject =
+                "google-player-permission-test-" + uniqueTestId();
+
+        UserAuthentication userAuthentication =
+                new UserAuthentication();
+
+        userAuthentication.setUser(player);
+        userAuthentication.setProvider(
+                AuthenticationProvider.GOOGLE
+        );
+        userAuthentication.setProviderUserId(
+                googleSubject
+        );
+
+        userAuthenticationRepository.saveAndFlush(
+                userAuthentication
+        );
+
+        OAuth2User oauth2User =
+                new DefaultOAuth2User(
+                        java.util.List.of(
+                                new SimpleGrantedAuthority("ROLE_USER")
+                        ),
+                        Map.of(
+                                "sub", googleSubject,
+                                "email", player.getEmail(),
+                                "name", player.getDisplayName()
+                        ),
+                        "sub"
+                );
+
+        Authentication authentication =
+                new OAuth2AuthenticationToken(
+                        oauth2User,
+                        oauth2User.getAuthorities(),
+                        "google"
+                );
+
+        mockMvc.perform(
+                get("/api/admin/permissions/modules")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isForbidden());
+    }
+    
+    @Test
+    void inactiveAdminCannotAccessSuperAdminPermissionModules()
+        throws Exception {
+
+        User admin = createPlayerRegistrationTestUser();
+
+        admin.setRole(UserRole.ADMIN);
+        admin.setActive(false);
+        admin.setAccountStatus(UserAccountStatus.ACTIVE);
+
+        admin = userRepository.saveAndFlush(admin);
+
+        String googleSubject =
+                "google-inactive-admin-permission-test-"
+                        + uniqueTestId();
+
+        UserAuthentication userAuthentication =
+                new UserAuthentication();
+
+        userAuthentication.setUser(admin);
+        userAuthentication.setProvider(
+                AuthenticationProvider.GOOGLE
+        );
+        userAuthentication.setProviderUserId(
+                googleSubject
+        );
+
+        userAuthenticationRepository.saveAndFlush(
+                userAuthentication
+        );
+
+        OAuth2User oauth2User =
+                new DefaultOAuth2User(
+                        java.util.List.of(
+                                new SimpleGrantedAuthority("ROLE_USER")
+                        ),
+                        Map.of(
+                                "sub", googleSubject,
+                                "email", admin.getEmail(),
+                                "name", admin.getDisplayName()
+                        ),
+                        "sub"
+                );
+
+        Authentication authentication =
+                new OAuth2AuthenticationToken(
+                        oauth2User,
+                        oauth2User.getAuthorities(),
+                        "google"
+                );
+
+        mockMvc.perform(
+                get("/api/admin/permissions/modules")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(authentication)
+                        )
+        )
+        .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void playerTeamCreatePermissionOverrideShouldControlApiAccess()
+        throws Exception {
+
+        String testId = String.valueOf(System.nanoTime());
+
+        // ---------------------------------------------------------
+        // 1. Create an active PLAYER
+        // ---------------------------------------------------------
+        User player = createPlayerRegistrationTestUser();
+
+        player.setRole(UserRole.PLAYER);
+        player.setActive(true);
+        player.setAccountStatus(UserAccountStatus.ACTIVE);
+
+        player = userRepository.saveAndFlush(player);
+
+        String googleSubject =
+                "google-player-team-create-permission-"
+                        + uniqueTestId();
+
+        UserAuthentication userAuthentication =
+                new UserAuthentication();
+
+        userAuthentication.setUser(player);
+        userAuthentication.setProvider(
+                AuthenticationProvider.GOOGLE
+        );
+        userAuthentication.setProviderUserId(
+                googleSubject
+        );
+
+        userAuthenticationRepository.saveAndFlush(
+                userAuthentication
+        );
+
+        OAuth2User oauth2User =
+                new DefaultOAuth2User(
+                        java.util.List.of(
+                                new SimpleGrantedAuthority("ROLE_USER")
+                        ),
+                        Map.of(
+                                "sub", googleSubject,
+                                "email", player.getEmail(),
+                                "name", player.getDisplayName()
+                        ),
+                        "sub"
+                );
+
+        Authentication playerAuthentication =
+                new OAuth2AuthenticationToken(
+                        oauth2User,
+                        oauth2User.getAuthorities(),
+                        "google"
+                );
+
+        // ---------------------------------------------------------
+        // 2. PLAYER has no TEAMS CREATE permission by default
+        // ---------------------------------------------------------
+        mockMvc.perform(
+                post("/api/teams")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(
+                                                playerAuthentication
+                                        )
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                "name": "Permission Test Team %s",
+                                "shortName": "PT%s",
+                                "city": "Visakhapatnam"
+                                }
+                                """.formatted(
+                                        testId,
+                                        testId.substring(
+                                                Math.max(
+                                                        0,
+                                                        testId.length() - 8
+                                                )
+                                        )
+                                ))
+        )
+        .andExpect(status().isForbidden());
+
+        // ---------------------------------------------------------
+        // 3. Super Admin grants PLAYER -> TEAMS -> CREATE
+        // ---------------------------------------------------------
+        permissionService.updateUserPermission(
+                player,
+                "TEAMS",
+                PermissionAction.CREATE,
+                true
+        );
+
+        userRepository.flush();
+
+        // Verify override was actually persisted
+        UserPermissionOverride enabledOverride =
+                userPermissionOverrideRepository
+                        .findByUser_IdAndModule_ModuleKeyAndAction(
+                                player.getId(),
+                                "TEAMS",
+                                PermissionAction.CREATE
+                        )
+                        .orElseThrow();
+
+        Assertions.assertEquals(
+                Boolean.TRUE,
+                enabledOverride.getAllowed()
+        );
+
+        // ---------------------------------------------------------
+        // 4. PLAYER can now create a team
+        // ---------------------------------------------------------
+        mockMvc.perform(
+                post("/api/teams")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(
+                                                playerAuthentication
+                                        )
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                "name": "Permission Test Team %s",
+                                "shortName": "PT%s",
+                                "city": "Visakhapatnam"
+                                }
+                                """.formatted(
+                                        testId,
+                                        testId.substring(
+                                                Math.max(
+                                                        0,
+                                                        testId.length() - 8
+                                                )
+                                        )
+                                ))
+        )
+        .andExpect(status().isCreated());
+
+        // ---------------------------------------------------------
+        // 5. Reset PLAYER -> TEAMS -> CREATE
+        // ---------------------------------------------------------
+        permissionService.updateUserPermission(
+                player,
+                "TEAMS",
+                PermissionAction.CREATE,
+                null
+        );
+
+        userRepository.flush();
+
+        // Verify override was removed
+        Assertions.assertTrue(
+                userPermissionOverrideRepository
+                        .findByUser_IdAndModule_ModuleKeyAndAction(
+                                player.getId(),
+                                "TEAMS",
+                                PermissionAction.CREATE
+                        )
+                        .isEmpty()
+        );
+
+        // ---------------------------------------------------------
+        // 6. PLAYER is denied again after reset
+        // ---------------------------------------------------------
+        mockMvc.perform(
+                post("/api/teams")
+                        .with(
+                                SecurityMockMvcRequestPostProcessors
+                                        .authentication(
+                                                playerAuthentication
+                                        )
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                "name": "Permission Test Team After Reset %s",
+                                "shortName": "PR%s",
+                                "city": "Visakhapatnam"
+                                }
+                                """.formatted(
+                                        testId,
+                                        testId.substring(
+                                                Math.max(
+                                                        0,
+                                                        testId.length() - 8
+                                                )
+                                        )
+                                ))
+        )
+        .andExpect(status().isForbidden());
+     }
+
+     @Test
+     void adminTeamCreatePermissionOverrideShouldControlApiAccess()
+        throws Exception {
+
+                String testId = String.valueOf(System.nanoTime());
+
+                // 1. Create active ADMIN
+                User admin = createPlayerRegistrationTestUser();
+
+                admin.setRole(UserRole.ADMIN);
+                admin.setActive(true);
+                admin.setAccountStatus(UserAccountStatus.ACTIVE);
+
+                admin = userRepository.saveAndFlush(admin);
+
+                String googleSubject =
+                        "google-admin-team-create-permission-"
+                                + uniqueTestId();
+
+                UserAuthentication userAuthentication =
+                        new UserAuthentication();
+
+                userAuthentication.setUser(admin);
+                userAuthentication.setProvider(
+                        AuthenticationProvider.GOOGLE
+                );
+                userAuthentication.setProviderUserId(googleSubject);
+
+                userAuthenticationRepository.saveAndFlush(
+                        userAuthentication
+                );
+
+                OAuth2User oauth2User =
+                        new DefaultOAuth2User(
+                                java.util.List.of(
+                                        new SimpleGrantedAuthority("ROLE_USER")
+                                ),
+                                Map.of(
+                                        "sub", googleSubject,
+                                        "email", admin.getEmail(),
+                                        "name", admin.getDisplayName()
+                                ),
+                                "sub"
+                        );
+
+                Authentication adminAuthentication =
+                        new OAuth2AuthenticationToken(
+                                oauth2User,
+                                oauth2User.getAuthorities(),
+                                "google"
+                        );
+
+                // 2. ADMIN default TEAMS.CREATE should be allowed
+                mockMvc.perform(
+                        post("/api/teams")
+                                .with(
+                                        SecurityMockMvcRequestPostProcessors
+                                                .authentication(
+                                                        adminAuthentication
+                                                )
+                                )
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                        "name": "Admin Permission Team %s",
+                                        "shortName": "AT%s",
+                                        "city": "Visakhapatnam"
+                                        }
+                                        """.formatted(
+                                                testId,
+                                                testId.substring(
+                                                        Math.max(
+                                                                0,
+                                                                testId.length() - 8
+                                                        )
+                                                )
+                                        ))
+                )
+                .andExpect(status().isCreated());
+
+                // 3. Explicitly deny ADMIN TEAMS.CREATE
+                permissionService.updateUserPermission(
+                        admin,
+                        "TEAMS",
+                        PermissionAction.CREATE,
+                        false
+                );
+
+                userRepository.flush();
+
+                UserPermissionOverride deniedOverride =
+                        userPermissionOverrideRepository
+                                .findByUser_IdAndModule_ModuleKeyAndAction(
+                                        admin.getId(),
+                                        "TEAMS",
+                                        PermissionAction.CREATE
+                                )
+                                .orElseThrow();
+
+                Assertions.assertEquals(
+                        Boolean.FALSE,
+                        deniedOverride.getAllowed()
+                );
+
+                // 4. ADMIN should now be denied
+                mockMvc.perform(
+                        post("/api/teams")
+                                .with(
+                                        SecurityMockMvcRequestPostProcessors
+                                                .authentication(
+                                                        adminAuthentication
+                                                )
+                                )
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                        "name": "Admin Permission Denied %s",
+                                        "shortName": "AD%s",
+                                        "city": "Visakhapatnam"
+                                        }
+                                        """.formatted(
+                                                testId,
+                                                testId.substring(
+                                                        Math.max(
+                                                                0,
+                                                                testId.length() - 8
+                                                        )
+                                                )
+                                        ))
+                )
+                .andExpect(status().isForbidden());
+
+                // 5. Explicitly re-enable ADMIN TEAMS.CREATE
+                permissionService.updateUserPermission(
+                        admin,
+                        "TEAMS",
+                        PermissionAction.CREATE,
+                        true
+                );
+
+                userRepository.flush();
+
+                Assertions.assertEquals(
+                        Boolean.TRUE,
+                        userPermissionOverrideRepository
+                                .findByUser_IdAndModule_ModuleKeyAndAction(
+                                        admin.getId(),
+                                        "TEAMS",
+                                        PermissionAction.CREATE
+                                )
+                                .orElseThrow()
+                                .getAllowed()
+                );
+
+                // 6. ADMIN should be allowed again
+                mockMvc.perform(
+                        post("/api/teams")
+                                .with(
+                                        SecurityMockMvcRequestPostProcessors
+                                                .authentication(
+                                                        adminAuthentication
+                                                )
+                                )
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                        "name": "Admin Permission Reenabled %s",
+                                        "shortName": "AR%s",
+                                        "city": "Visakhapatnam"
+                                        }
+                                        """.formatted(
+                                                testId,
+                                                testId.substring(
+                                                        Math.max(
+                                                                0,
+                                                                testId.length() - 8
+                                                        )
+                                                )
+                                        ))
+                )
+                .andExpect(status().isCreated());
+
+                // 7. Reset ADMIN TEAMS.CREATE to role default
+                permissionService.updateUserPermission(
+                        admin,
+                        "TEAMS",
+                        PermissionAction.CREATE,
+                        null
+                );
+
+                userRepository.flush();
+
+                Assertions.assertTrue(
+                        userPermissionOverrideRepository
+                                .findByUser_IdAndModule_ModuleKeyAndAction(
+                                        admin.getId(),
+                                        "TEAMS",
+                                        PermissionAction.CREATE
+                                )
+                                .isEmpty()
+                );
+
+                // 8. Role default should again apply
+                mockMvc.perform(
+                        post("/api/teams")
+                                .with(
+                                        SecurityMockMvcRequestPostProcessors
+                                                .authentication(
+                                                        adminAuthentication
+                                                )
+                                )
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                        "name": "Admin Permission After Reset %s",
+                                        "shortName": "AP%s",
+                                        "city": "Visakhapatnam"
+                                        }
+                                        """.formatted(
+                                                testId,
+                                                testId.substring(
+                                                        Math.max(
+                                                                0,
+                                                                testId.length() - 8
+                                                        )
+                                                )
+                                        ))
+                )
+                .andExpect(status().isCreated());
+      }
+
+      @Test
+      void superAdminPermissionModificationShouldBeRejected()
+        throws Exception {
+
+                Authentication superAdminAuthentication =
+                        createSuperAdminAuthentication();
+
+                OAuth2User oauth2User =
+                        (OAuth2User) superAdminAuthentication.getPrincipal();
+
+                String email = oauth2User.getAttribute("email");
+
+                User superAdmin =
+                        userRepository
+                                .findByEmail(email)
+                                .orElseThrow();
+
+                // Attempt to modify a SUPER ADMIN permission
+                Assertions.assertThrows(
+                        IllegalArgumentException.class,
+                        () -> permissionService.updateUserPermission(
+                                superAdmin,
+                                "TEAMS",
+                                PermissionAction.CREATE,
+                                true
+                        )
+                );
+
+                // Verify no override was created
+                Assertions.assertTrue(
+                        userPermissionOverrideRepository
+                                .findByUser_IdAndModule_ModuleKeyAndAction(
+                                        superAdmin.getId(),
+                                        "TEAMS",
+                                        PermissionAction.CREATE
+                                )
+                                .isEmpty()
+                );
+
+                // Attempt to reset SUPER ADMIN permissions
+                Assertions.assertThrows(
+                        IllegalArgumentException.class,
+                        () -> permissionService.resetUserPermissions(
+                                superAdmin
+                        )
+                );
+
+                // Verify no override exists after reset attempt
+                Assertions.assertTrue(
+                        userPermissionOverrideRepository
+                                .findByUser_Id(superAdmin.getId())
+                                .isEmpty()
+                );
+     }
 }

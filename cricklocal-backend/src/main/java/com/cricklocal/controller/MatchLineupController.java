@@ -7,6 +7,7 @@ import com.cricklocal.dto.ReplaceMatchPlayerRequest;
 import com.cricklocal.service.MatchLineupService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -25,6 +26,7 @@ public class MatchLineupController {
 
     @PostMapping("/{matchId}/lineup")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'MATCH_PREPARATION', T(com.cricklocal.entity.PermissionAction).EDIT)")
     public MatchLineupResponse addPlayerToMatch(
             @PathVariable Long matchId,
             @Valid @RequestBody AddPlayerToMatchRequest request) {
@@ -36,6 +38,7 @@ public class MatchLineupController {
     }
 
     @GetMapping("/{matchId}/lineup")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'MATCH_PREPARATION', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public List<MatchLineupResponse> getMatchLineup(
             @PathVariable Long matchId) {
 
@@ -43,6 +46,7 @@ public class MatchLineupController {
     }
 
     @GetMapping("/{matchId}/lineup/team/{teamId}")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'MATCH_PREPARATION', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public List<MatchLineupResponse> getTeamMatchLineup(
             @PathVariable Long matchId,
             @PathVariable Long teamId) {
@@ -54,16 +58,19 @@ public class MatchLineupController {
     }
 
     @GetMapping("/{matchId}/lineup/team/{teamId}/finalized")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'MATCH_PREPARATION', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public PlayingXIResponse getFinalizedPlayingXI(
             @PathVariable Long matchId,
             @PathVariable Long teamId) {
 
         return matchLineupService.getFinalizedPlayingXI(
                 matchId,
-                teamId);
+                teamId
+        );
     }
 
     @PostMapping("/{matchId}/lineup/team/{teamId}/finalize")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'MATCH_PREPARATION', T(com.cricklocal.entity.PermissionAction).EDIT)")
     public PlayingXIResponse finalizePlayingXI(
             @PathVariable Long matchId,
             @PathVariable Long teamId) {
@@ -75,6 +82,7 @@ public class MatchLineupController {
     }
 
     @PostMapping("/{matchId}/lineup/team/{teamId}/replace")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'MATCH_PREPARATION', T(com.cricklocal.entity.PermissionAction).EDIT)")
     public MatchLineupResponse replacePlayer(
             @PathVariable Long matchId,
             @PathVariable Long teamId,
@@ -83,6 +91,7 @@ public class MatchLineupController {
         return matchLineupService.replacePlayer(
                 matchId,
                 teamId,
-                request);
+                request
+        );
     }
 }

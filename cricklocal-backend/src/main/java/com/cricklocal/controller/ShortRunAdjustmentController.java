@@ -6,6 +6,7 @@ import com.cricklocal.service.ScoreOperatorAuthorizationService;
 import com.cricklocal.service.ShortRunAdjustmentService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -18,21 +19,25 @@ public class ShortRunAdjustmentController {
     public ShortRunAdjustmentController(
             ShortRunAdjustmentService adjustmentService,
             ScoreOperatorAuthorizationService authorizationService) {
+
         this.adjustmentService = adjustmentService;
         this.authorizationService = authorizationService;
     }
 
     @PostMapping("/{inningsId}/short-run-adjustments")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'LIVE_SCORING', T(com.cricklocal.entity.PermissionAction).EDIT)")
     public ShortRunAdjustmentResponse deductRuns(
             @PathVariable Long inningsId,
             @RequestHeader(
                     name = "X-Score-Operator-Session",
-                    required = false) String sessionToken,
+                    required = false)
+            String sessionToken,
             @Valid @RequestBody ShortRunAdjustmentRequest request) {
 
         authorizationService.requireSessionForInnings(
-                sessionToken, inningsId);
+                sessionToken,
+                inningsId);
 
         return adjustmentService.deductRuns(inningsId, request);
     }

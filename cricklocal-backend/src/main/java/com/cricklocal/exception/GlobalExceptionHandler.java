@@ -2,6 +2,8 @@ package com.cricklocal.exception;
 
 import com.cricklocal.dto.ErrorResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -65,5 +67,19 @@ public class GlobalExceptionHandler {
         return new ErrorResponse(
                 HttpStatus.INTERNAL_SERVER_ERROR.value(),
                 "An unexpected error occurred");
+    }
+
+    @ExceptionHandler(AuthorizationDeniedException.class)
+    public ResponseEntity<?> handleAuthorizationDenied(
+                AuthorizationDeniedException exception) {
+
+        return ResponseEntity
+                .status(HttpStatus.FORBIDDEN)
+                .body(
+                        java.util.Map.of(
+                                "status", 403,
+                                "message", "Access denied"
+                        )
+                );
     }
 }

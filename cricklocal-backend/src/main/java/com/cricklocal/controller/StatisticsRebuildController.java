@@ -4,6 +4,7 @@ import com.cricklocal.entity.Innings;
 import com.cricklocal.exception.ResourceNotFoundException;
 import com.cricklocal.repository.InningsRepository;
 import com.cricklocal.service.StatisticsRebuildService;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -21,6 +22,7 @@ public class StatisticsRebuildController {
     }
 
     @PostMapping("/{inningsId}/rebuild-statistics")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'STATISTICS', T(com.cricklocal.entity.PermissionAction).EDIT)")
     public String rebuildStatistics(
             @PathVariable Long inningsId) {
 

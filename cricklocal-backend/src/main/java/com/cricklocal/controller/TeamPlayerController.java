@@ -12,6 +12,7 @@ import com.cricklocal.repository.TeamPlayerRepository;
 import com.cricklocal.repository.TeamRepository;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -40,6 +41,7 @@ public class TeamPlayerController {
     }
 
     @PostMapping("/{teamId}/players/{playerId}")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'TEAMS', T(com.cricklocal.entity.PermissionAction).EDIT)")
     @ResponseStatus(HttpStatus.CREATED)
     public TeamRosterPlayerResponse addPlayerToTeam(
             @PathVariable Long teamId,
@@ -57,23 +59,12 @@ public class TeamPlayerController {
         Optional<TeamPlayer> existingMembership =
                 teamPlayerRepository.findByTeamAndPlayer(team, player);
 
-        /*
-         * Existing membership found.
-         *
-         * If it is inactive, reactivate the SAME TeamPlayer record.
-         * This preserves the relationship history and avoids creating
-         * duplicate team-player records.
-         */
         if (existingMembership.isPresent()) {
 
             TeamPlayer teamPlayer = existingMembership.get();
 
             if (!Boolean.TRUE.equals(teamPlayer.getActive())) {
 
-                /*
-                 * A player cannot be active on another team while
-                 * being reactivated on this team.
-                 */
                 boolean activeOnAnotherTeamOfSameSeries =
                         teamPlayerRepository
                                 .existsActiveMembershipInAnotherTeamOfSameSeries(
@@ -81,14 +72,10 @@ public class TeamPlayerController {
                                         team);
 
                 if (activeOnAnotherTeamOfSameSeries) {
-                throw new IllegalArgumentException(
-                        "Player is already assigned to another team in this series");
+                    throw new IllegalArgumentException(
+                            "Player is already assigned to another team in this series");
                 }
 
-                /*
-                 * Make sure the requested jersey number is not already
-                 * being used by another active player on this team.
-                 */
                 if (teamPlayerRepository
                         .existsByTeamAndJerseyNumberAndActiveTrue(
                                 team,
@@ -102,25 +89,18 @@ public class TeamPlayerController {
                         request.getJerseyNumber());
 
                 teamPlayer.setActive(true);
-
                 teamPlayer.setLeftAt(null);
 
                 TeamPlayer savedTeamPlayer =
                         teamPlayerRepository.save(teamPlayer);
 
-                return toTeamRosterPlayerResponse(
-                        savedTeamPlayer);
+                return toTeamRosterPlayerResponse(savedTeamPlayer);
             }
 
             throw new IllegalArgumentException(
                     "Player is already a member of this team");
         }
 
-        /*
-         * No existing membership for this team.
-         *
-         * Make sure the player is not already active on another team.
-         */
         boolean activeOnAnotherTeamOfSameSeries =
                 teamPlayerRepository
                         .existsActiveMembershipInAnotherTeamOfSameSeries(
@@ -128,14 +108,10 @@ public class TeamPlayerController {
                                 team);
 
         if (activeOnAnotherTeamOfSameSeries) {
-        throw new IllegalArgumentException(
-                "Player is already assigned to another team in this series");
+            throw new IllegalArgumentException(
+                    "Player is already assigned to another team in this series");
         }
 
-        /*
-         * Jersey number must be unique among active players
-         * in this team.
-         */
         if (teamPlayerRepository
                 .existsByTeamAndJerseyNumberAndActiveTrue(
                         team,
@@ -155,11 +131,11 @@ public class TeamPlayerController {
         TeamPlayer savedTeamPlayer =
                 teamPlayerRepository.save(teamPlayer);
 
-        return toTeamRosterPlayerResponse(
-                savedTeamPlayer);
+        return toTeamRosterPlayerResponse(savedTeamPlayer);
     }
 
     @GetMapping("/{teamId}/players")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'TEAMS', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public List<TeamRosterPlayerResponse> getTeamPlayers(
             @PathVariable Long teamId) {
 
@@ -175,6 +151,7 @@ public class TeamPlayerController {
     }
 
     @GetMapping("/{teamId}/captain")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'TEAMS', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public TeamCaptainResponse getCaptain(
             @PathVariable Long teamId) {
 
@@ -207,6 +184,7 @@ public class TeamPlayerController {
     }
 
     @DeleteMapping("/{teamId}/players/{playerId}")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'TEAMS', T(com.cricklocal.entity.PermissionAction).DELETE)")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void removePlayerFromTeam(
             @PathVariable Long teamId,
@@ -232,10 +210,6 @@ public class TeamPlayerController {
                     "Player is already inactive in this team");
         }
 
-        /*
-         * A player who belongs to a finalized Playing XI cannot
-         * be removed from the team roster.
-         */
         if (matchLineupRepository
                 .existsByTeamAndPlayerInFinalizedPlayingXI(
                         team,
@@ -245,10 +219,6 @@ public class TeamPlayerController {
                     "Player cannot be removed because they are part of a finalized Playing XI");
         }
 
-        /*
-         * If the player is the team's current captain,
-         * release the team captain assignment.
-         */
         if (team.getCaptain() != null
                 && team.getCaptain()
                         .getId()
@@ -258,9 +228,6 @@ public class TeamPlayerController {
             teamRepository.save(team);
         }
 
-        /*
-         * Soft-delete the roster membership.
-         */
         teamPlayer.setActive(false);
         teamPlayer.setLeftAt(Instant.now());
 
@@ -268,6 +235,7 @@ public class TeamPlayerController {
     }
 
     @PutMapping("/{teamId}/captain/{playerId}")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'TEAMS', T(com.cricklocal.entity.PermissionAction).EDIT)")
     public TeamCaptainResponse setCaptain(
             @PathVariable Long teamId,
             @PathVariable Long playerId) {
@@ -303,12 +271,10 @@ public class TeamPlayerController {
         response.setShortName(team.getShortName());
         response.setTeamPlayerId(teamPlayer.getId());
         response.setPlayerId(player.getId());
-        response.setDisplayName(
-                player.getDisplayName());
+        response.setDisplayName(player.getDisplayName());
         response.setJerseyNumber(
                 teamPlayer.getJerseyNumber());
-        response.setActive(
-                teamPlayer.getActive());
+        response.setActive(teamPlayer.getActive());
 
         return response;
     }

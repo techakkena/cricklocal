@@ -6,6 +6,7 @@ import com.cricklocal.service.DeliveryService;
 import com.cricklocal.service.ScoreOperatorAuthorizationService;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -28,6 +29,7 @@ public class DeliveryController {
 
     @PostMapping("/{inningsId}/deliveries")
     @ResponseStatus(HttpStatus.CREATED)
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'LIVE_SCORING', T(com.cricklocal.entity.PermissionAction).CREATE)")
     public DeliveryResponse recordDelivery(
             @PathVariable Long inningsId,
             @RequestHeader(
@@ -37,6 +39,13 @@ public class DeliveryController {
             String sessionToken,
             @Valid @RequestBody RecordDeliveryRequest request) {
 
+        /*
+         * Permission check above controls whether the authenticated
+         * user has LIVE_SCORING.CREATE access.
+         *
+         * Operator session validation remains mandatory for the
+         * actual live-scoring operation.
+         */
         operatorAuthorizationService.requireSessionForInnings(
                 sessionToken,
                 inningsId
@@ -48,6 +57,7 @@ public class DeliveryController {
     }
 
     @GetMapping("/{inningsId}/deliveries")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'LIVE_SCORING', T(com.cricklocal.entity.PermissionAction).VIEW)")
     public List<DeliveryResponse> getDeliveries(
             @PathVariable Long inningsId) {
 
@@ -55,6 +65,7 @@ public class DeliveryController {
     }
 
     @PostMapping("/{inningsId}/deliveries/undo")
+    @PreAuthorize("@permissionAuthorizationService.isAllowed(authentication, 'LIVE_SCORING', T(com.cricklocal.entity.PermissionAction).DELETE)")
     public void undoLastDelivery(
             @PathVariable Long inningsId,
             @RequestHeader(
@@ -63,6 +74,11 @@ public class DeliveryController {
             )
             String sessionToken) {
 
+        /*
+         * Undo is treated as a DELETE-style live-scoring action.
+         * The existing operator-session authorization remains
+         * mandatory.
+         */
         operatorAuthorizationService.requireSessionForInnings(
                 sessionToken,
                 inningsId
