@@ -92,14 +92,26 @@ const othersItems: NavItem[] = [
   },
 ];
 
+const superAdminItems: NavItem[] = [
+  {
+    icon: <GroupIcon />,
+    name: "User Permissions",
+    path: "/admin/user-permissions",
+  },
+];
+
+
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const location = useLocation();
   const { user } = useAuth();
+
   const isAdmin = user?.adminAccess?.active === true;
+  const isSuperAdmin = user?.role === "SUPER_ADMIN";
+
 
   const [openSubmenu, setOpenSubmenu] = useState<{
-    type: "main" | "others";
+    type: "main" | "others" | "superAdmin";
     index: number;
   } | null>(null);
   const [subMenuHeight, setSubMenuHeight] = useState<Record<string, number>>(
@@ -115,14 +127,20 @@ const AppSidebar: React.FC = () => {
 
   useEffect(() => {
     let submenuMatched = false;
-    ["main", "others"].forEach((menuType) => {
-      const items = menuType === "main" ? navItems : othersItems;
+    ["main", "others", "superAdmin"].forEach((menuType) => {
+  const items =
+    menuType === "main"
+      ? navItems
+      : menuType === "others"
+        ? othersItems
+        : superAdminItems;
+
       items.forEach((nav, index) => {
         if (nav.subItems) {
           nav.subItems.forEach((subItem) => {
             if (isActive(subItem.path)) {
               setOpenSubmenu({
-                type: menuType as "main" | "others",
+                type: menuType as "main" | "others" | "superAdmin",
                 index,
               });
               submenuMatched = true;
@@ -149,7 +167,7 @@ const AppSidebar: React.FC = () => {
     }
   }, [openSubmenu]);
 
-  const handleSubmenuToggle = (index: number, menuType: "main" | "others") => {
+  const handleSubmenuToggle = (index: number, menuType: "main" | "others" | "superAdmin") => {
     setOpenSubmenu((prevOpenSubmenu) => {
       if (
         prevOpenSubmenu &&
@@ -164,7 +182,7 @@ const AppSidebar: React.FC = () => {
 
   const renderMenuItems = (
     items: NavItem[],
-    menuType: "main" | "others"
+    menuType: "main" | "others" | "superAdmin"
   ) => (
     <ul className="flex flex-col gap-4">
       {items.map((nav, index) => {
@@ -394,6 +412,25 @@ const AppSidebar: React.FC = () => {
               </h2>
               {renderMenuItems(othersItems, "others")}
             </div>
+            {isSuperAdmin && (
+            <div className="mt-6">
+              <h2
+                className={`mb-4 text-xs uppercase flex leading-[20px] text-gray-400 ${
+                  !isExpanded && !isHovered
+                    ? "lg:justify-center"
+                    : "justify-start"
+                }`}
+              >
+                {isExpanded || isHovered || isMobileOpen ? (
+                  "Super Admin"
+                ) : (
+                  <HorizontaLDots />
+                )}
+              </h2>
+
+              {renderMenuItems(superAdminItems, "superAdmin")}
+            </div>
+          )}
           </div>
         </nav>
         {isExpanded || isHovered || isMobileOpen ? <SidebarWidget /> : null}
