@@ -38,3 +38,5 @@ Thumbs.db
 
 # ---------- Test / generated files ----------
 coverage/
+# Local database backups
+*.dump
